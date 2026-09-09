@@ -15,7 +15,7 @@
               系统与网络设置
             </h3>
             <p class="text-xs text-slate-500 dark:text-slate-400">
-              个性化信令与 WebRTC NAT 穿透参数
+              个性化网络穿透与交互偏好
             </p>
           </div>
         </div>
@@ -29,54 +29,15 @@
 
       <!-- Settings Content -->
       <div class="flex-1 overflow-y-auto py-4 space-y-5 custom-scrollbar pr-1">
-        <!-- Supabase Realtime Credentials -->
-        <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <label class="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center space-x-1.5">
-              <span>Supabase 信令凭据 (Realtime)</span>
-            </label>
-            <span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">仅作信令握手，零数据存储</span>
-          </div>
-          <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2.5">
-            用于设备 Presence 发现与 SDP/ICE 交换。保存在本地浏览器 localStorage 中，支持私有部署。
-          </p>
-
-          <div class="space-y-2">
-            <div>
-              <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">
-                Supabase Project URL
-              </label>
-              <input
-                v-model="form.supabaseUrl"
-                type="text"
-                placeholder="https://your-project.supabase.co"
-                class="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">
-                Supabase Anon Key
-              </label>
-              <input
-                v-model="form.supabaseAnonKey"
-                type="password"
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
-                class="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-        </div>
-
         <!-- WebRTC ICE / STUN / TURN -->
-        <div class="pt-4 border-t border-slate-100 dark:border-slate-800">
+        <div>
           <div class="flex items-center justify-between mb-1.5">
             <label class="text-xs font-bold text-slate-900 dark:text-slate-100">
               WebRTC NAT 穿透与中继 (STUN / TURN)
             </label>
           </div>
           <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2.5">
-            默认已内置 Google 与 Cloudflare 免费公共 STUN 节点。如处在对称型 NAT 或企业级高防网络，可配置自定义 TURN 服务器。
+            默认已内置 Google 与 Cloudflare 免费公共 STUN 节点。如处在对称型 NAT 或高安全隔离网络，可配置自定义 TURN 中继服务器。
           </p>
 
           <div class="space-y-2">
@@ -191,8 +152,6 @@ const emit = defineEmits<{
 }>()
 
 const form = reactive({
-  supabaseUrl: props.settings.supabaseUrl,
-  supabaseAnonKey: props.settings.supabaseAnonKey,
   turnUrls: props.settings.turnServer?.urls || '',
   turnUsername: props.settings.turnServer?.username || '',
   turnCredential: props.settings.turnServer?.credential || '',
@@ -206,8 +165,6 @@ watch(
   () => props.isOpen,
   (open) => {
     if (open) {
-      form.supabaseUrl = props.settings.supabaseUrl
-      form.supabaseAnonKey = props.settings.supabaseAnonKey
       form.turnUrls = props.settings.turnServer?.urls || ''
       form.turnUsername = props.settings.turnServer?.username || ''
       form.turnCredential = props.settings.turnServer?.credential || ''
@@ -219,8 +176,6 @@ watch(
 
 const handleSave = () => {
   emit('save', {
-    supabaseUrl: form.supabaseUrl.trim(),
-    supabaseAnonKey: form.supabaseAnonKey.trim(),
     turnServer: form.turnUrls.trim()
       ? {
           urls: form.turnUrls.trim(),

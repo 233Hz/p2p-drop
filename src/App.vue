@@ -1,22 +1,5 @@
 <template>
   <div class="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
-    <!-- Unconfigured Supabase Alert Banner -->
-    <div 
-      v-if="!hasConfiguredSupabase"
-      class="bg-indigo-600 dark:bg-indigo-700 text-white px-4 py-2.5 text-xs flex items-center justify-between shadow-md z-40"
-    >
-      <div class="flex items-center space-x-2 truncate">
-        <span class="px-1.5 py-0.5 rounded bg-white/20 font-bold">提示</span>
-        <span class="truncate">当前尚未配置 Supabase 信令凭据，需填写 Project URL 与 Anon Key 才能激活实时通信与设备发现。</span>
-      </div>
-      <button
-        @click="isSettingsOpen = true"
-        class="ml-3 px-3 py-1 bg-white text-indigo-700 font-bold rounded-lg text-xs hover:bg-indigo-50 transition active:scale-95 flex-shrink-0"
-      >
-        立即配置
-      </button>
-    </div>
-
     <!-- Header Navigation -->
     <HeaderBar
       :room-id="currentRoomId"
@@ -96,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import HeaderBar from './components/HeaderBar.vue'
 import RadarCanvas from './components/RadarCanvas.vue'
 import DynamicIsland from './components/DynamicIsland.vue'
@@ -108,16 +91,11 @@ import NameModal from './components/NameModal.vue'
 import { useConfig } from './composables/useConfig'
 import { usePeerManager } from './composables/usePeerManager'
 import { useTransfer } from './composables/useTransfer'
-import { supabaseService } from './services/supabase'
 import type { PeerInfo } from './types/peer'
 import type { AppSettings } from './types/config'
 
 // Config & theme
 const { settings, isDark, toggleTheme, saveSettings } = useConfig()
-
-const hasConfiguredSupabase = computed(() => {
-  return supabaseService.isConfigured(settings.supabaseUrl, settings.supabaseAnonKey)
-})
 
 // Modals
 const isQrOpen = ref(false)
@@ -139,7 +117,6 @@ const {
   switchRoom,
   resetToDefaultRoom,
   updateSelfName,
-  reconnect,
 } = usePeerManager({
   onSignal: (sig) => onSignalCallback?.(sig),
 })
@@ -186,9 +163,5 @@ const handleSwitchRoom = (roomId: string) => {
 const handleSaveSettings = (newSettings: Partial<AppSettings>) => {
   Object.assign(settings, newSettings)
   saveSettings()
-  if (newSettings.supabaseUrl && newSettings.supabaseAnonKey) {
-    supabaseService.initClient(newSettings.supabaseUrl, newSettings.supabaseAnonKey)
-    reconnect()
-  }
 }
 </script>

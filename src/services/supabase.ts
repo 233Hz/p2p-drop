@@ -1,7 +1,6 @@
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js'
 import type { PeerInfo } from '@/types/peer'
 import type { SignalMessage } from '@/types/transfer'
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from '@/types/config'
 
 export interface SupabaseSignalingHandlers {
   onPresenceSync: (peers: PeerInfo[]) => void
@@ -23,9 +22,9 @@ export class SupabaseSignalingService {
     return this.selfPeer
   }
 
-  public isConfigured(url?: string, key?: string): boolean {
-    const supabaseUrl = url || import.meta.env.VITE_SUPABASE_URL || localStorage.getItem('p2p_drop_supabase_url') || DEFAULT_SUPABASE_URL
-    const supabaseKey = key || import.meta.env.VITE_SUPABASE_ANON_KEY || localStorage.getItem('p2p_drop_supabase_anon_key') || DEFAULT_SUPABASE_ANON_KEY
+  public isConfigured(): boolean {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
     return Boolean(supabaseUrl && supabaseKey && supabaseUrl.startsWith('http'))
   }
 
@@ -49,11 +48,12 @@ export class SupabaseSignalingService {
     handlers: SupabaseSignalingHandlers
   ): Promise<boolean> {
     if (!this.client) {
-      const url = localStorage.getItem('p2p_drop_supabase_url') || import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL
-      const key = localStorage.getItem('p2p_drop_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY
+      const url = import.meta.env.VITE_SUPABASE_URL
+      const key = import.meta.env.VITE_SUPABASE_ANON_KEY
       if (url && key && url.startsWith('http')) {
         this.initClient(url, key)
       } else {
+        console.error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in environment')
         handlers.onStatusChange('ERROR')
         return false
       }
