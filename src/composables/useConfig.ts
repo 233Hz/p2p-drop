@@ -1,13 +1,13 @@
 import { ref, reactive, watch } from 'vue'
 import type { AppSettings } from '@/types/config'
-import { DEFAULT_STUN_SERVERS } from '@/types/config'
+import { DEFAULT_STUN_SERVERS, DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from '@/types/config'
 
 const STORAGE_KEY = 'p2p_drop_settings'
 
 export function useConfig() {
   const defaultSettings: AppSettings = {
-    supabaseUrl: import.meta.env.VITE_SUPABASE_URL || localStorage.getItem('p2p_drop_supabase_url') || '',
-    supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || localStorage.getItem('p2p_drop_supabase_anon_key') || '',
+    supabaseUrl: import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL,
+    supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY,
     stunServers: [...DEFAULT_STUN_SERVERS],
     turnServer: {
       urls: '',
@@ -28,6 +28,13 @@ export function useConfig() {
     } catch {
       // ignore
     }
+  }
+
+  if (!initial.supabaseUrl || !initial.supabaseUrl.startsWith('http')) {
+    initial.supabaseUrl = DEFAULT_SUPABASE_URL
+  }
+  if (!initial.supabaseAnonKey) {
+    initial.supabaseAnonKey = DEFAULT_SUPABASE_ANON_KEY
   }
 
   const settings = reactive<AppSettings>(initial)
