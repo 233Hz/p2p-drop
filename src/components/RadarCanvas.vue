@@ -1,28 +1,30 @@
 <template>
   <div 
     class="relative w-full flex-1 flex items-center justify-center overflow-hidden select-none py-6 sm:py-12 bg-[#f5f5f7] dark:bg-[#1c1c1e] transition-colors duration-200"
+    @click="onBackgroundClick"
     @dragover.prevent="onGlobalDragOver"
     @dragleave.prevent="onGlobalDragLeave"
     @drop.prevent="onDrop"
   >
-    <!-- Radar Concentric Reference Rings (SVG Precision Curves) -->
+    <!-- Radar Concentric Rings & Sweep Animation -->
     <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <!-- Desktop circular reference rings -->
-      <svg class="hidden sm:block w-[600px] h-[600px]" viewBox="0 0 600 600">
-        <circle cx="300" cy="300" r="280" fill="none" class="stroke-black/[0.04] dark:stroke-white/5" stroke-width="1" />
-        <circle cx="300" cy="300" r="190" fill="none" class="stroke-black/[0.06] dark:stroke-white/8" stroke-width="1" />
-        <circle cx="300" cy="300" r="110" fill="none" class="stroke-black/[0.09] dark:stroke-white/10" stroke-width="1" />
-      </svg>
-      <!-- Mobile vertical ellipse reference rings (matching portrait non-overlapping peer layout) -->
-      <svg class="block sm:hidden w-[340px] h-[460px]" viewBox="0 0 340 460">
-        <ellipse cx="170" cy="230" rx="140" ry="185" fill="none" class="stroke-black/[0.04] dark:stroke-white/5" stroke-width="1" />
-        <ellipse cx="170" cy="230" rx="95" ry="125" fill="none" class="stroke-black/[0.06] dark:stroke-white/8" stroke-width="1" />
-        <ellipse cx="170" cy="230" rx="55" ry="75" fill="none" class="stroke-black/[0.09] dark:stroke-white/10" stroke-width="1" />
-      </svg>
+      <!-- Outer ring 3 -->
+      <div class="w-[320px] h-[320px] sm:w-[580px] sm:h-[580px] rounded-full border border-black/[0.06] dark:border-white/5 animate-pulse-slow"></div>
+      <!-- Middle ring 2 -->
+      <div class="absolute w-[220px] h-[220px] sm:w-[400px] sm:h-[400px] rounded-full border border-black/[0.08] dark:border-white/8"></div>
+      <!-- Inner ring 1 -->
+      <div class="absolute w-[130px] h-[130px] sm:w-[240px] sm:h-[240px] rounded-full border border-black/[0.1] dark:border-white/10"></div>
+
+      <!-- Radar Light Cone (Animated Sweep) -->
+      <div 
+        v-if="status === 'CONNECTED'"
+        class="absolute w-[320px] h-[320px] sm:w-[580px] sm:h-[580px] rounded-full opacity-40 dark:opacity-20 animate-radar-sweep origin-center pointer-events-none"
+        style="background: conic-gradient(from 0deg, transparent 0deg, rgba(99, 102, 241, 0.15) 60deg, transparent 60.1deg);"
+      ></div>
     </div>
 
     <!-- Center Node (Self) -->
-    <div class="relative z-10">
+    <div class="relative z-10" @click.stop>
       <PeerNode
         :peer="selfPeer"
         :is-self="true"
@@ -34,12 +36,15 @@
     <div 
       v-for="(peer, index) in peers" 
       :key="peer.peerId"
-      class="absolute z-20 transition-transform duration-500 ease-out"
+      class="absolute z-20 transition-all duration-500 ease-out"
       :style="getPeerPositionStyle(index, peers.length)"
+      @click.stop
     >
       <PeerNode
         :peer="peer"
         :is-self="false"
+        :is-selected="selectedPeerId === peer.peerId"
+        @select="handleSelectPeer(peer)"
         @send-files="(p, files) => $emit('send-files', p, files)"
         @send-text="(p) => $emit('send-text', p)"
       />
@@ -101,18 +106,26 @@ const emit = defineEmits<{
 }>()
 
 const isGlobalDragging = ref(false)
+const selectedPeerId = ref<string | null>(null)
+
+const handleSelectPeer = (peer: PeerInfo) => {
+  selectedPeerId.value = selectedPeerId.value === peer.peerId ? null : peer.peerId
+}
+
+const onBackgroundClick = () => {
+  selectedPeerId.value = null
+}
 
 const getPeerPositionStyle = (index: number, total: number) => {
   const isDesktop = typeof window !== 'undefined' ? window.innerWidth >= 640 : true
-  // Mobile layout: radiusY=185px guarantees no vertical overlap with the self card (50px+ clearance)
-  const radiusX = isDesktop ? 210 : 135
-  const radiusY = isDesktop ? 210 : 185
+  // Safe circular radius on both desktop (200px) and mobile (120px)
+  const radius = isDesktop ? 200 : 120
 
   const angleStep = (2 * Math.PI) / total
   const angle = -Math.PI / 2 + index * angleStep
 
-  const x = Math.round(Math.cos(angle) * radiusX)
-  const y = Math.round(Math.sin(angle) * radiusY)
+  const x = Math.round(Math.cos(angle) * radius)
+  const y = Math.round(Math.sin(angle) * radius)
 
   return {
     transform: `translate(${x}px, ${y}px)`,
