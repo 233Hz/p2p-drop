@@ -42,6 +42,9 @@
                   <span v-if="task.files.length > 1" class="text-[10px] text-slate-400 font-mono">
                     ({{ task.currentFileIndex + 1 }}/{{ task.files.length }})
                   </span>
+                  <span v-if="task.isRelay" class="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-500/25 text-amber-300 border border-amber-500/30 flex-shrink-0">
+                    云端中继
+                  </span>
                 </div>
                 <p class="text-[11px] text-slate-400">
                   {{ task.direction === 'send' ? `发送至 ${task.peerName}` : `来自 ${task.peerName}` }}

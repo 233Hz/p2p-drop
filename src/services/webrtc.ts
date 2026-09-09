@@ -67,7 +67,7 @@ export class WebRTCConnectionSession implements WebRTCConnectionResult {
 
     this.timeoutTimer = setTimeout(() => {
       this.fail(new Error('等待数据通道连接超时（双方可能处于不同网络或被防火墙拦截）'))
-    }, 35000)
+    }, 7000)
   }
 
   public getChannels = (): Promise<{ control: RTCDataChannel; data: RTCDataChannel }> => {

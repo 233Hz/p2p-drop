@@ -1,4 +1,4 @@
-import type { FileMeta, ControlPacket, TextItem } from '@/types/transfer'
+import type { FileMeta, ControlPacket, TextItem, SignalMessage } from '@/types/transfer'
 import { createFileReceiver, type FileReceiverWriter } from './storage'
 
 export const CHUNK_SIZE = 32 * 1024 // 32 KB per chunk
@@ -231,3 +231,218 @@ export class TransferChannel {
     } catch {}
   }
 }
+
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = ''
+  const bytes = new Uint8Array(buffer)
+  const len = bytes.byteLength
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+}
+
+export function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = atob(base64)
+  const len = binaryString.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i)
+  }
+  return bytes.buffer
+}
+
+export class RelayChannel {
+  private selfPeerId: string
+  private targetPeerId: string
+  private sendSignal: (signal: SignalMessage) => void
+  private isCancelled: boolean = false
+  private currentWriter: FileReceiverWriter | null = null
+  private writerPromise: Promise<FileReceiverWriter> | null = null
+  private pendingChunks: Array<{ fileIndex: number; chunkIndex: number; payload: ArrayBuffer }> = []
+  private events: Partial<ChannelEvents> = {}
+
+  constructor(
+    selfPeerId: string,
+    targetPeerId: string,
+    sendSignal: (signal: SignalMessage) => void,
+    events: Partial<ChannelEvents> = {}
+  ) {
+    this.selfPeerId = selfPeerId
+    this.targetPeerId = targetPeerId
+    this.sendSignal = sendSignal
+    this.events = events
+  }
+
+  public handleControlPacket(packet: ControlPacket) {
+    switch (packet.type) {
+      case 'file-start': {
+        const { fileIndex, file, transferId } = packet.payload
+        this.events.onFileStart?.(fileIndex, file)
+        this.writerPromise = createFileReceiver(file, transferId, fileIndex)
+        this.writerPromise.then(async (writer) => {
+          this.currentWriter = writer
+          while (this.pendingChunks.length > 0) {
+            const item = this.pendingChunks.shift()!
+            await this.currentWriter.writeChunk(item.chunkIndex, item.payload)
+            this.events.onProgress?.(item.payload.byteLength, item.fileIndex, item.chunkIndex)
+          }
+        })
+        break
+      }
+      case 'file-end': {
+        const { fileIndex, file } = packet.payload
+        const finalize = async () => {
+          if (this.writerPromise) await this.writerPromise
+          if (this.currentWriter) {
+            await this.currentWriter.finish()
+            this.currentWriter = null
+          }
+          this.writerPromise = null
+          this.pendingChunks = []
+          this.events.onFileComplete?.(fileIndex, file)
+        }
+        finalize()
+        break
+      }
+      case 'cancel': {
+        this.isCancelled = true
+        this.pendingChunks = []
+        if (this.currentWriter) {
+          this.currentWriter.abort().catch(() => {})
+          this.currentWriter = null
+        }
+        this.writerPromise = null
+        this.events.onCancel?.()
+        break
+      }
+      case 'text': {
+        this.events.onTextReceived?.(packet.payload)
+        break
+      }
+    }
+  }
+
+  public async handleChunk(fileIndex: number, chunkIndex: number, base64Data: string) {
+    const payload = base64ToArrayBuffer(base64Data)
+    if (this.currentWriter) {
+      await this.currentWriter.writeChunk(chunkIndex, payload)
+      this.events.onProgress?.(payload.byteLength, fileIndex, chunkIndex)
+    } else if (this.writerPromise) {
+      this.pendingChunks.push({ fileIndex, chunkIndex, payload })
+    }
+  }
+
+  public async sendFiles(files: File[], fileMetas: FileMeta[], transferId: string) {
+    this.isCancelled = false
+
+    for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+      if (this.isCancelled) break
+
+      const file = files[fileIndex]
+      const meta = fileMetas[fileIndex]
+      this.events.onFileStart?.(fileIndex, meta)
+
+      // 1. Notify receiver about file start
+      this.sendSignal({
+        from: this.selfPeerId,
+        to: this.targetPeerId,
+        type: 'relay-control',
+        payload: {
+          type: 'file-start',
+          payload: { fileIndex, file: meta, transferId },
+        },
+      })
+
+      // Small tick to ensure receiver is ready
+      await new Promise((resolve) => setTimeout(resolve, 80))
+
+      // 2. Stream chunks
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
+      let offset = 0
+
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        if (this.isCancelled) {
+          this.sendSignal({
+            from: this.selfPeerId,
+            to: this.targetPeerId,
+            type: 'relay-control',
+            payload: { type: 'cancel', payload: { reason: 'user_cancelled' } },
+          })
+          return
+        }
+
+        const slice = file.slice(offset, offset + CHUNK_SIZE)
+        const chunkBuffer = await slice.arrayBuffer()
+        const b64Data = arrayBufferToBase64(chunkBuffer)
+
+        this.sendSignal({
+          from: this.selfPeerId,
+          to: this.targetPeerId,
+          type: 'relay-chunk',
+          payload: { fileIndex, chunkIndex, data: b64Data },
+        })
+
+        this.events.onProgress?.(chunkBuffer.byteLength, fileIndex, chunkIndex)
+        offset += CHUNK_SIZE
+
+        // Pacing: wait 15ms every 5 chunks to keep socket healthy
+        if (chunkIndex % 5 === 0) {
+          await new Promise((r) => setTimeout(r, 15))
+        }
+      }
+
+      // 3. Notify receiver about file end
+      this.sendSignal({
+        from: this.selfPeerId,
+        to: this.targetPeerId,
+        type: 'relay-control',
+        payload: {
+          type: 'file-end',
+          payload: { fileIndex, file: meta },
+        },
+      })
+
+      this.events.onFileComplete?.(fileIndex, meta)
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+
+    if (!this.isCancelled) {
+      this.events.onAllCompleted?.()
+    }
+  }
+
+  public sendText(item: TextItem) {
+    this.sendSignal({
+      from: this.selfPeerId,
+      to: this.targetPeerId,
+      type: 'relay-control',
+      payload: {
+        type: 'text',
+        payload: item,
+      },
+    })
+  }
+
+  public cancel() {
+    this.isCancelled = true
+    this.sendSignal({
+      from: this.selfPeerId,
+      to: this.targetPeerId,
+      type: 'relay-control',
+      payload: { type: 'cancel', payload: { reason: 'user_cancelled' } },
+    })
+    if (this.currentWriter) {
+      this.currentWriter.abort().catch(() => {})
+      this.currentWriter = null
+    }
+  }
+
+  public close() {
+    this.isCancelled = true
+    this.currentWriter = null
+    this.writerPromise = null
+    this.pendingChunks = []
+  }
+}
+
