@@ -121,13 +121,21 @@ export async function createFileReceiver(
   }
 
   // Strategy 3: Memory Blob Accumulator (< 200MB)
-  const memoryChunks: ArrayBuffer[] = []
+  const totalChunks = file.totalChunks || Math.ceil(file.size / (32 * 1024)) || 1
+  const memoryChunks: ArrayBuffer[] = new Array(totalChunks)
   return {
-    async writeChunk(_chunkIndex: number, data: ArrayBuffer) {
-      memoryChunks.push(data)
+    async writeChunk(chunkIndex: number, data: ArrayBuffer) {
+      memoryChunks[chunkIndex] = data
     },
     async finish() {
-      const blob = new Blob(memoryChunks, { type: file.type || 'application/octet-stream' })
+      // Assemble all indexed chunks
+      const validChunks: ArrayBuffer[] = []
+      for (let i = 0; i < memoryChunks.length; i++) {
+        if (memoryChunks[i]) {
+          validChunks.push(memoryChunks[i])
+        }
+      }
+      const blob = new Blob(validChunks, { type: file.type || 'application/octet-stream' })
       triggerDownload(blob, file.name)
       memoryChunks.length = 0
     },
