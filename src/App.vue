@@ -20,7 +20,6 @@
         :self-peer="selfPeer"
         :peers="peers"
         :status="connectionStatus"
-        :room-id="currentRoomId"
         @send-files="handleSendFiles"
         @send-text="openTextModal"
         @edit-name="isNameOpen = true"
@@ -32,7 +31,7 @@
     <DynamicIsland
       :task="activeTask"
       @cancel="cancelActiveTask"
-      @dismiss="dismissTask"
+      @dismiss="activeTask = null"
     />
 
     <!-- Incoming Transfer Authorization Modal -->
@@ -132,7 +131,6 @@ const {
   acceptTransfer,
   rejectTransfer,
   cancelActiveTask,
-  dismissTask,
   sendTextMessage,
 } = useTransfer(selfPeer, settings)
 

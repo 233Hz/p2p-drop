@@ -49,25 +49,16 @@
     <!-- Empty State Guide -->
     <div 
       v-if="peers.length === 0"
-      class="absolute bottom-4 sm:bottom-8 w-[92%] max-w-sm px-4 py-3 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-lg text-center transition-all z-20"
+      class="absolute bottom-4 sm:bottom-8 w-[92%] max-w-sm px-4 py-2.5 sm:px-6 sm:py-3 rounded-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-md text-center transition-all z-20"
     >
-      <div class="flex items-center justify-center space-x-2 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
-        <span class="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></span>
-        <span>正在雷达侦测同频设备...</span>
-      </div>
+      <p class="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200">
+        正在雷达侦测同频设备...
+      </p>
       <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-normal">
-        当前网络房间：<span class="font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">{{ displayRoomId }}</span>
+        同一 Wi-Fi 或局域网下的设备打开即被发现，或点击右上角
+        <span class="text-indigo-600 dark:text-indigo-400 font-semibold cursor-pointer underline" @click="$emit('open-qr')">扫码分享</span>
+        让其他设备快速加入。
       </p>
-      <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-        同 Wi-Fi 自动发现；跨网络或未发现请点击下方扫码互联
-      </p>
-      <button
-        @click="$emit('open-qr')"
-        class="mt-2.5 w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-md shadow-indigo-500/20 transition active:scale-95 flex items-center justify-center space-x-1.5"
-      >
-        <QrCode class="w-3.5 h-3.5" />
-        <span>扫码或输入房间号互联</span>
-      </button>
     </div>
 
     <!-- Global Drag Overlay Hint -->
@@ -93,8 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { QrCode } from 'lucide-vue-next'
+import { ref } from 'vue'
 import PeerNode from './PeerNode.vue'
 import type { PeerInfo } from '@/types/peer'
 
@@ -102,7 +92,6 @@ const props = defineProps<{
   selfPeer: PeerInfo
   peers: PeerInfo[]
   status: 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'
-  roomId?: string
 }>()
 
 const emit = defineEmits<{
@@ -111,14 +100,6 @@ const emit = defineEmits<{
   (e: 'edit-name'): void
   (e: 'open-qr'): void
 }>()
-
-const displayRoomId = computed(() => {
-  if (!props.roomId) return '...'
-  if (props.roomId.startsWith('lan-')) {
-    return props.roomId.replace('lan-', '')
-  }
-  return props.roomId
-})
 
 const isGlobalDragging = ref(false)
 

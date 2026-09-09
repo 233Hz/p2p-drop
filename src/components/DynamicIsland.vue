@@ -42,9 +42,6 @@
                   <span v-if="task.files.length > 1" class="text-[10px] text-slate-400 font-mono">
                     ({{ task.currentFileIndex + 1 }}/{{ task.files.length }})
                   </span>
-                  <span v-if="task.isRelay" class="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-500/25 text-amber-300 border border-amber-500/30 flex-shrink-0">
-                    云端中继
-                  </span>
                 </div>
                 <p class="text-[11px] text-slate-400">
                   {{ task.direction === 'send' ? `发送至 ${task.peerName}` : `来自 ${task.peerName}` }}
@@ -94,35 +91,23 @@
 
         <!-- Completed State -->
         <div v-else-if="task.status === 'completed'" class="flex items-center justify-between py-1">
-          <div class="flex items-center space-x-3 truncate mr-2">
-            <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-shrink-0">
+          <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center">
               <Check class="w-5 h-5" />
             </div>
-            <div class="truncate">
+            <div>
               <p class="text-xs font-bold text-emerald-200">传输完成！</p>
-              <p class="text-[11px] text-emerald-300/80 truncate">
+              <p class="text-[11px] text-emerald-300/80">
                 共 {{ task.files.length }} 个文件 ({{ formatBytes(task.totalBytes) }})
               </p>
             </div>
           </div>
-          <div class="flex items-center space-x-2 flex-shrink-0">
-            <!-- Manual Save/Download Button for Receiver with direct user activation -->
-            <button
-              v-if="task.direction === 'receive' && hasDownloadableFiles"
-              @click="handleSaveFiles"
-              class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white shadow-md shadow-emerald-950/40 transition active:scale-95 flex items-center space-x-1.5"
-              title="保存或重新下载接收到的文件"
-            >
-              <Download class="w-3.5 h-3.5" />
-              <span>{{ task.files.length > 1 ? '保存全部' : '保存文件' }}</span>
-            </button>
-            <button
-              @click="$emit('dismiss')"
-              class="px-3 py-1.5 rounded-xl bg-emerald-800/60 hover:bg-emerald-800 text-xs font-medium text-emerald-100 transition active:scale-95"
-            >
-              关闭
-            </button>
-          </div>
+          <button
+            @click="$emit('dismiss')"
+            class="px-3 py-1.5 rounded-xl bg-emerald-800/60 hover:bg-emerald-800 text-xs font-medium text-emerald-100 transition active:scale-95"
+          >
+            关闭
+          </button>
         </div>
 
         <!-- Failed or Cancelled State -->
@@ -154,7 +139,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ArrowUpRight, ArrowDownLeft, X, Check, AlertCircle, Download } from 'lucide-vue-next'
+import { ArrowUpRight, ArrowDownLeft, X, Check, AlertCircle } from 'lucide-vue-next'
 import type { TransferTask } from '@/types/transfer'
 import { formatBytes, formatSpeed, formatEta } from '@/utils/format'
 
@@ -172,28 +157,4 @@ const currentFileName = computed(() => {
   const file = props.task.files[props.task.currentFileIndex]
   return file ? file.name : props.task.files[0].name
 })
-
-const hasDownloadableFiles = computed(() => {
-  return props.task?.files.some((f) => !!f.blobUrl) ?? false
-})
-
-const handleSaveFiles = () => {
-  if (!props.task) return
-  const downloadable = props.task.files.filter((f) => !!f.blobUrl)
-  downloadable.forEach((file, index) => {
-    setTimeout(() => {
-      const a = document.createElement('a')
-      a.style.display = 'none'
-      a.href = file.blobUrl!
-      a.download = file.name
-      document.body.appendChild(a)
-      a.click()
-      setTimeout(() => {
-        try {
-          document.body.removeChild(a)
-        } catch {}
-      }, 2000)
-    }, index * 250)
-  })
-}
 </script>

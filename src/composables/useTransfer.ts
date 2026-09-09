@@ -4,7 +4,7 @@ import type { PeerInfo } from '@/types/peer'
 import type { FileMeta, TransferTask, SignalMessage, TextItem } from '@/types/transfer'
 import { sound } from '@/utils/sound'
 import { WebRTCService, type WebRTCConnectionResult } from '@/services/webrtc'
-import { TransferChannel, RelayChannel, CHUNK_SIZE } from '@/services/channel'
+import { TransferChannel, CHUNK_SIZE } from '@/services/channel'
 import { supabaseService } from '@/services/supabase'
 import type { AppSettings } from '@/types/config'
 
@@ -18,7 +18,7 @@ function formatErrorMessage(err: any): string {
   if (!err) return '传输连接异常中断'
   const msg = typeof err === 'string' ? err : err.message || String(err)
   if (msg.includes('timed out') || msg.includes('timeout') || msg.includes('超时')) {
-    return 'P2P 穿透握手超时（双方可能处于不同网络或受防火墙拦截）'
+    return 'P2P 穿透握手超时（双方可能处于不同网络、受防火墙阻隔或运营商拦截，建议检查网络或配置 TURN 中继）'
   }
   if (
     msg.includes('Symmetric NAT') ||
@@ -26,7 +26,7 @@ function formatErrorMessage(err: any): string {
     msg.includes('WebRTC connection failed') ||
     msg.includes('打洞失败')
   ) {
-    return 'P2P 打洞失败（网络限制或对称型 NAT）'
+    return 'P2P 打洞失败（网络限制或对称型 NAT，建议配置 TURN 中继服务器）'
   }
   if (msg.includes('closed unexpectedly') || msg.includes('closed')) {
     return '传输通道被意外中断'
@@ -42,7 +42,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
 
   const webrtcService = new WebRTCService(settings)
   let activeRtc: WebRTCConnectionResult | null = null
-  let activeChannel: TransferChannel | RelayChannel | null = null
+  let activeChannel: TransferChannel | null = null
   let pendingFilesToSend: File[] = []
   let earlyIceCandidates: RTCIceCandidateInit[] = []
 
@@ -110,57 +110,6 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
     earlyIceCandidates = []
   }
 
-  const startRelaySender = async (targetPeerId: string, transferId: string) => {
-    if (!activeTask.value || activeTask.value.status === 'completed') return
-    if (activeTask.value.isRelay) return
-    activeTask.value.isRelay = true
-    activeTask.value.status = 'transferring'
-
-    if (activeRtc) {
-      activeRtc.close()
-      activeRtc = null
-    }
-
-    // Inform receiver that we are switching to cloud relay
-    await supabaseService.sendSignal({
-      from: selfPeer.peerId,
-      to: targetPeerId,
-      type: 'relay-fallback',
-      payload: { transferId },
-    })
-
-    setupRelayTransferChannel(targetPeerId)
-    startMetricsTracking()
-
-    try {
-      await (activeChannel as RelayChannel)!.sendFiles(
-        pendingFilesToSend,
-        activeTask.value.files,
-        transferId
-      )
-    } catch (err: any) {
-      if (activeTask.value) {
-        activeTask.value.status = 'failed'
-        activeTask.value.errorMessage = formatErrorMessage(err)
-      }
-    }
-  }
-
-  const startRelayReceiver = (fromPeerId: string) => {
-    if (!activeTask.value || activeTask.value.status === 'completed') return
-    if (activeTask.value.isRelay) return
-    activeTask.value.isRelay = true
-    activeTask.value.status = 'transferring'
-
-    if (activeRtc) {
-      activeRtc.close()
-      activeRtc = null
-    }
-
-    setupRelayTransferChannel(fromPeerId)
-    startMetricsTracking()
-  }
-
   // Handle incoming Supabase Realtime signals
   const handleSignal = async (signal: SignalMessage) => {
     switch (signal.type) {
@@ -197,8 +146,11 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
             (sig) => supabaseService.sendSignal(sig),
             (state) => {
               if (state === 'failed') {
-                console.warn('WebRTC initiator failed, falling back to relay')
-                startRelaySender(activeTask.value!.peerId, transferId)
+                if (activeTask.value) {
+                  activeTask.value.status = 'failed'
+                  activeTask.value.errorMessage =
+                    'P2P 穿透失败（网络隔离或对称型 NAT，建议配置 TURN 中继）'
+                }
               }
             }
           )
@@ -222,8 +174,10 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
             transferId
           )
         } catch (err: any) {
-          console.warn('WebRTC connection failed, falling back to relay channel:', err)
-          await startRelaySender(activeTask.value.peerId, transferId)
+          if (activeTask.value) {
+            activeTask.value.status = 'failed'
+            activeTask.value.errorMessage = formatErrorMessage(err)
+          }
         }
         break
       }
@@ -240,14 +194,11 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
             (sig) => supabaseService.sendSignal(sig),
             (state) => {
               if (state === 'failed') {
-                console.warn('WebRTC receiver failed, falling back to relay')
-                startRelayReceiver(signal.from)
-                supabaseService.sendSignal({
-                  from: selfPeer.peerId,
-                  to: signal.from,
-                  type: 'relay-fallback',
-                  payload: { transferId: activeTask.value!.id },
-                })
+                if (activeTask.value) {
+                  activeTask.value.status = 'failed'
+                  activeTask.value.errorMessage =
+                    'P2P 穿透失败（网络隔离或对称型 NAT，建议配置 TURN 中继）'
+                }
               }
             }
           )
@@ -263,14 +214,10 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
           activeTask.value.status = 'transferring'
           startMetricsTracking()
         } catch (err: any) {
-          console.warn('WebRTC accept failed, falling back to relay channel:', err)
-          startRelayReceiver(signal.from)
-          supabaseService.sendSignal({
-            from: selfPeer.peerId,
-            to: signal.from,
-            type: 'relay-fallback',
-            payload: { transferId: activeTask.value.id },
-          })
+          if (activeTask.value) {
+            activeTask.value.status = 'failed'
+            activeTask.value.errorMessage = formatErrorMessage(err)
+          }
         }
         break
       }
@@ -297,32 +244,6 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
         break
       }
 
-      case 'relay-fallback': {
-        if (activeTask.value && activeTask.value.id === signal.payload.transferId) {
-          if (activeTask.value.direction === 'send') {
-            await startRelaySender(signal.from, activeTask.value.id)
-          } else {
-            startRelayReceiver(signal.from)
-          }
-        }
-        break
-      }
-
-      case 'relay-control': {
-        if (activeChannel && 'handleControlPacket' in activeChannel) {
-          ;(activeChannel as RelayChannel).handleControlPacket(signal.payload)
-        }
-        break
-      }
-
-      case 'relay-chunk': {
-        if (activeChannel && 'handleChunk' in activeChannel) {
-          const { fileIndex, chunkIndex, data } = signal.payload
-          ;(activeChannel as RelayChannel).handleChunk(fileIndex, chunkIndex, data)
-        }
-        break
-      }
-
       case 'text-message': {
         const item: TextItem = signal.payload
         incomingText.value = item
@@ -333,26 +254,6 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
     }
   }
 
-
-  const triggerTaskCompleted = () => {
-    if (!activeTask.value) return
-    if (activeTask.value.status === 'completed') return
-
-    activeTask.value.status = 'completed'
-    activeTask.value.progress = 100
-    activeTask.value.bytesTransferred = activeTask.value.totalBytes
-    activeTask.value.completedTime = Date.now()
-    stopMetricsTracking()
-    if (settings.soundEnabled) sound.playSuccess()
-    if (settings.vibrationEnabled) sound.vibrate([150, 80, 150])
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 },
-      })
-    } catch {}
-  }
 
   const setupTransferChannel = (controlDc: RTCDataChannel, dataDc: RTCDataChannel) => {
     activeChannel = new TransferChannel(controlDc, dataDc, {
@@ -371,22 +272,25 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
           activeTask.value.currentFileIndex = index
         }
       },
-      onFileComplete: (index, _meta, blob) => {
-        if (activeTask.value && activeTask.value.files[index]) {
-          if (blob) {
-            activeTask.value.files[index].blobUrl = URL.createObjectURL(blob)
-          }
-        }
-        if (activeTask.value && activeTask.value.direction === 'receive') {
-          if (index >= activeTask.value.files.length - 1) {
-            setTimeout(() => {
-              triggerTaskCompleted()
-            }, 100)
-          }
-        }
+      onFileComplete: () => {
+        // Individual file completed
       },
       onAllCompleted: () => {
-        triggerTaskCompleted()
+        if (activeTask.value) {
+          activeTask.value.status = 'completed'
+          activeTask.value.progress = 100
+          activeTask.value.completedTime = Date.now()
+        }
+        stopMetricsTracking()
+        if (settings.soundEnabled) sound.playSuccess()
+        if (settings.vibrationEnabled) sound.vibrate([150, 80, 150])
+        try {
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { y: 0.6 },
+          })
+        } catch {}
       },
       onCancel: () => {
         if (activeTask.value) {
@@ -408,67 +312,6 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
         if (settings.soundEnabled) sound.playNotification()
       },
     })
-  }
-
-  const setupRelayTransferChannel = (targetPeerId: string) => {
-    activeChannel = new RelayChannel(
-      selfPeer.peerId,
-      targetPeerId,
-      (sig) => supabaseService.sendSignal(sig),
-      {
-        onProgress: (bytesDelta, currentFileIndex, currentChunkIndex) => {
-          if (!activeTask.value) return
-          activeTask.value.bytesTransferred += bytesDelta
-          activeTask.value.currentFileIndex = currentFileIndex
-          activeTask.value.currentChunkIndex = currentChunkIndex
-          activeTask.value.progress = Math.min(
-            100,
-            Math.round((activeTask.value.bytesTransferred / activeTask.value.totalBytes) * 100)
-          )
-        },
-        onFileStart: (index, _meta) => {
-          if (activeTask.value) {
-            activeTask.value.currentFileIndex = index
-          }
-        },
-        onFileComplete: (index, _meta, blob) => {
-          if (activeTask.value && activeTask.value.files[index]) {
-            if (blob) {
-              activeTask.value.files[index].blobUrl = URL.createObjectURL(blob)
-            }
-          }
-          if (activeTask.value && activeTask.value.direction === 'receive') {
-            if (index >= activeTask.value.files.length - 1) {
-              setTimeout(() => {
-                triggerTaskCompleted()
-              }, 100)
-            }
-          }
-        },
-        onAllCompleted: () => {
-          triggerTaskCompleted()
-        },
-        onCancel: () => {
-          if (activeTask.value) {
-            activeTask.value.status = 'cancelled'
-          }
-          stopMetricsTracking()
-        },
-        onError: (err) => {
-          if (activeTask.value) {
-            activeTask.value.status = 'failed'
-            activeTask.value.errorMessage = formatErrorMessage(err)
-          }
-          stopMetricsTracking()
-          if (settings.soundEnabled) sound.playError()
-        },
-        onTextReceived: (item) => {
-          incomingText.value = item
-          textMessages.value.unshift(item)
-          if (settings.soundEnabled) sound.playNotification()
-        },
-      }
-    )
   }
 
   // Public Actions
@@ -587,20 +430,6 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
     resetActiveTask()
   }
 
-  const dismissTask = () => {
-    if (activeTask.value?.files) {
-      activeTask.value.files.forEach((f) => {
-        if (f.blobUrl) {
-          try {
-            URL.revokeObjectURL(f.blobUrl)
-          } catch {}
-        }
-      })
-    }
-    activeTask.value = null
-    resetActiveTask()
-  }
-
   const sendTextMessage = async (targetPeer: PeerInfo, text: string) => {
     if (!text.trim()) return
 
@@ -629,7 +458,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
 
   onUnmounted(() => {
     stopMetricsTracking()
-    dismissTask()
+    resetActiveTask()
   })
 
   return {
@@ -642,7 +471,6 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
     acceptTransfer,
     rejectTransfer,
     cancelActiveTask,
-    dismissTask,
     sendTextMessage,
   }
 }

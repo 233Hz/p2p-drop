@@ -7,7 +7,6 @@ export interface FileMeta {
   totalChunks: number
   chunkSizeBytes: number
   lastModified?: number
-  blobUrl?: string
 }
 
 export type TransferStatus =
@@ -35,7 +34,6 @@ export interface TransferTask {
   errorMessage?: string
   startTime: number
   completedTime?: number
-  isRelay?: boolean
 }
 
 export type SignalType =
@@ -45,9 +43,6 @@ export type SignalType =
   | 'webrtc-answer'
   | 'webrtc-ice'
   | 'text-message'
-  | 'relay-fallback'
-  | 'relay-control'
-  | 'relay-chunk'
 
 export interface SignalMessage {
   from: string
@@ -60,7 +55,6 @@ export type ControlType =
   | 'file-start'
   | 'file-end'
   | 'file-ack'
-  | 'all-completed'
   | 'cancel'
   | 'text'
 

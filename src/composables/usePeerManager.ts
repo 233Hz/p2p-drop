@@ -4,15 +4,6 @@ import { generateRandomName, getAvatarGradient, detectDeviceType, detectOs, dete
 import { getPublicIpHash } from '@/services/ip'
 import { supabaseService, type SupabaseSignalingHandlers } from '@/services/supabase'
 
-export function normalizeRoomId(roomId: string): string {
-  if (!roomId) return ''
-  let cleaned = roomId.trim().toLowerCase()
-  if (cleaned.startsWith('lan-')) {
-    cleaned = cleaned.replace(/^lan-/, '')
-  }
-  return cleaned
-}
-
 export function usePeerManager(handlers: Partial<SupabaseSignalingHandlers> = {}) {
   const selfPeerId = 'peer_' + Math.random().toString(36).substring(2, 9)
 
@@ -29,45 +20,40 @@ export function usePeerManager(handlers: Partial<SupabaseSignalingHandlers> = {}
 
   const peers = ref<PeerInfo[]>([])
   const currentRoomId = ref<string>('')
-  const defaultRoomId = ref<string>('')
   const isDefaultRoom = ref<boolean>(true)
   const connectionStatus = ref<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('DISCONNECTED')
 
+  const isLanRoom = (roomId: string) => {
+    return roomId.startsWith('lan-') || roomId === 'lobby-global' || roomId.includes('正在')
+  }
+
   const parseRoomFromUrl = (): string | null => {
     const hash = window.location.hash
-    const match = hash.match(/#\/?room\/([a-zA-Z0-9_-]+)/i) || hash.match(/#room=([a-zA-Z0-9_-]+)/i)
+    const match = hash.match(/#\/room\/([a-zA-Z0-9_-]+)/)
     if (match && match[1]) {
-      return normalizeRoomId(match[1])
-    }
-    const searchParams = new URLSearchParams(window.location.search)
-    const queryRoom = searchParams.get('room')
-    if (queryRoom) {
-      return normalizeRoomId(queryRoom)
+      return match[1]
     }
     return null
   }
 
   const initRoom = async () => {
-    currentRoomId.value = '正在发现同频设备...'
-    const ipRoom = await getPublicIpHash()
-    defaultRoomId.value = normalizeRoomId(ipRoom)
-
     const urlRoom = parseRoomFromUrl()
     if (urlRoom) {
-      const normalized = normalizeRoomId(urlRoom)
-      currentRoomId.value = normalized
-      isDefaultRoom.value = normalized === defaultRoomId.value
+      currentRoomId.value = urlRoom
+      isDefaultRoom.value = isLanRoom(urlRoom)
     } else {
-      currentRoomId.value = defaultRoomId.value
+      currentRoomId.value = '正在发现同频设备...'
+      const ipRoom = await getPublicIpHash()
+      currentRoomId.value = ipRoom
       isDefaultRoom.value = true
-      window.location.hash = `#/room/${defaultRoomId.value}`
+      window.location.hash = `#/room/${ipRoom}`
     }
 
     await joinCurrentRoom()
   }
 
   const joinCurrentRoom = async () => {
-    if (!currentRoomId.value || currentRoomId.value.includes('正在')) return
+    if (!currentRoomId.value) return
 
     await supabaseService.joinRoom(currentRoomId.value, selfPeer, {
       onPresenceSync: (updatedPeers) => {
@@ -85,23 +71,20 @@ export function usePeerManager(handlers: Partial<SupabaseSignalingHandlers> = {}
   }
 
   const switchRoom = async (newRoom: string) => {
-    const normalized = normalizeRoomId(newRoom)
-    if (!normalized || normalized === currentRoomId.value) return
+    const trimmed = newRoom.trim()
+    if (!trimmed || trimmed === currentRoomId.value) return
 
-    currentRoomId.value = normalized
-    isDefaultRoom.value = normalized === defaultRoomId.value
-    window.location.hash = `#/room/${normalized}`
+    currentRoomId.value = trimmed
+    isDefaultRoom.value = isLanRoom(trimmed)
+    window.location.hash = `#/room/${trimmed}`
     await joinCurrentRoom()
   }
 
   const resetToDefaultRoom = async () => {
-    if (!defaultRoomId.value) {
-      const ipRoom = await getPublicIpHash()
-      defaultRoomId.value = normalizeRoomId(ipRoom)
-    }
-    currentRoomId.value = defaultRoomId.value
+    const ipRoom = await getPublicIpHash()
+    currentRoomId.value = ipRoom
     isDefaultRoom.value = true
-    window.location.hash = `#/room/${defaultRoomId.value}`
+    window.location.hash = `#/room/${ipRoom}`
     await joinCurrentRoom()
   }
 
@@ -115,30 +98,18 @@ export function usePeerManager(handlers: Partial<SupabaseSignalingHandlers> = {}
     const newRoom = parseRoomFromUrl()
     if (newRoom && newRoom !== currentRoomId.value) {
       currentRoomId.value = newRoom
-      isDefaultRoom.value = newRoom === defaultRoomId.value
+      isDefaultRoom.value = isLanRoom(newRoom)
       joinCurrentRoom()
-    }
-  }
-
-  const handleVisibilityOrOnline = () => {
-    if (document.visibilityState === 'visible' && navigator.onLine) {
-      if (currentRoomId.value && !currentRoomId.value.includes('正在')) {
-        joinCurrentRoom()
-      }
     }
   }
 
   onMounted(() => {
     window.addEventListener('hashchange', onHashChange)
-    document.addEventListener('visibilitychange', handleVisibilityOrOnline)
-    window.addEventListener('online', handleVisibilityOrOnline)
     initRoom()
   })
 
   onUnmounted(() => {
     window.removeEventListener('hashchange', onHashChange)
-    document.removeEventListener('visibilitychange', handleVisibilityOrOnline)
-    window.removeEventListener('online', handleVisibilityOrOnline)
     supabaseService.leaveRoom()
   })
 
@@ -146,7 +117,6 @@ export function usePeerManager(handlers: Partial<SupabaseSignalingHandlers> = {}
     selfPeer,
     peers,
     currentRoomId,
-    defaultRoomId,
     isDefaultRoom,
     connectionStatus,
     switchRoom,
