@@ -22,6 +22,7 @@ export class TransferChannel {
   private currentWriter: FileReceiverWriter | null = null
   private writerPromise: Promise<FileReceiverWriter> | null = null
   private pendingChunks: Array<{ fileIndex: number; chunkIndex: number; payload: ArrayBuffer }> = []
+  private pendingAcks = new Map<number, () => void>()
   private events: Partial<ChannelEvents> = {}
 
   constructor(controlDc: RTCDataChannel, dataDc: RTCDataChannel, events: Partial<ChannelEvents> = {}) {
@@ -94,6 +95,28 @@ export class TransferChannel {
         this.events.onFileComplete?.(fileIndex, file)
         // Send ACK back
         this.sendControl({ type: 'file-ack', payload: { fileIndex } })
+        break
+      }
+      case 'file-ack': {
+        const { fileIndex } = packet.payload
+        const resolveAck = this.pendingAcks.get(fileIndex)
+        if (resolveAck) {
+          resolveAck()
+          this.pendingAcks.delete(fileIndex)
+        }
+        break
+      }
+      case 'all-complete': {
+        if (this.writerPromise) {
+          await this.writerPromise
+        }
+        if (this.currentWriter) {
+          await this.currentWriter.finish()
+          this.currentWriter = null
+        }
+        this.writerPromise = null
+        this.pendingChunks = []
+        this.events.onAllCompleted?.()
         break
       }
       case 'cancel': {
@@ -175,18 +198,41 @@ export class TransferChannel {
         offset += CHUNK_SIZE
       }
 
+      // Wait for all data chunks of this file to exit sender's DataChannel buffer
+      await this.waitForBufferEmpty()
+
+      // Setup ACK waiting from receiver with safety timeout
+      const ackPromise = new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          this.pendingAcks.delete(fileIndex)
+          resolve()
+        }, 4000)
+        this.pendingAcks.set(fileIndex, () => {
+          clearTimeout(timer)
+          resolve()
+        })
+      })
+
       // 3. Notify receiver about file end
       this.sendControl({
         type: 'file-end',
         payload: { fileIndex, file: meta },
       })
 
+      // Wait for receiver to acknowledge file write & save
+      await ackPromise
+
       this.events.onFileComplete?.(fileIndex, meta)
-      // Allow buffer to settle between files
-      await new Promise((resolve) => setTimeout(resolve, 80))
+      // Small tick between files
+      await new Promise((resolve) => setTimeout(resolve, 50))
     }
 
     if (!this.isCancelled) {
+      // 4. Notify receiver that all files are transferred
+      this.sendControl({
+        type: 'all-complete',
+        payload: { transferId },
+      })
       this.events.onAllCompleted?.()
     }
   }
@@ -200,6 +246,8 @@ export class TransferChannel {
 
   public cancel() {
     this.isCancelled = true
+    this.pendingAcks.forEach((resolve) => resolve())
+    this.pendingAcks.clear()
     this.sendControl({ type: 'cancel', payload: { reason: 'user_cancelled' } })
     if (this.currentWriter) {
       this.currentWriter.abort().catch(() => {})
@@ -222,7 +270,34 @@ export class TransferChannel {
     })
   }
 
+  private waitForBufferEmpty(): Promise<void> {
+    if (this.dataDc.bufferedAmount === 0 || this.dataDc.readyState !== 'open') {
+      return Promise.resolve()
+    }
+    return new Promise((resolve) => {
+      let resolved = false
+      const done = () => {
+        if (!resolved) {
+          resolved = true
+          clearInterval(interval)
+          this.dataDc.removeEventListener('bufferedamountlow', done)
+          resolve()
+        }
+      }
+      this.dataDc.addEventListener('bufferedamountlow', done)
+      const interval = setInterval(() => {
+        if (this.dataDc.bufferedAmount === 0 || this.dataDc.readyState !== 'open') {
+          done()
+        }
+      }, 20)
+      setTimeout(done, 2000)
+    })
+  }
+
   public close() {
+    this.isCancelled = true
+    this.pendingAcks.forEach((resolve) => resolve())
+    this.pendingAcks.clear()
     try {
       this.controlDc.close()
     } catch {}

@@ -43,8 +43,13 @@ export async function createFileReceiver(
   fileIndex: number,
   preferFSA: boolean = true
 ): Promise<FileReceiverWriter> {
-  // Strategy 1: Native File System Access API
-  if (preferFSA && typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+  // Strategy 1: Native File System Access API (only if user gesture is active)
+  const hasUserGesture =
+    typeof navigator !== 'undefined' && (navigator as any).userActivation
+      ? (navigator as any).userActivation.isActive
+      : false
+
+  if (preferFSA && hasUserGesture && typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
     try {
       const handle = await (window as any).showSaveFilePicker({
         suggestedName: file.name,

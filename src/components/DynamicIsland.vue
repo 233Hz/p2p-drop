@@ -98,7 +98,7 @@
             <div>
               <p class="text-xs font-bold text-emerald-200">传输完成！</p>
               <p class="text-[11px] text-emerald-300/80">
-                共 {{ task.files.length }} 个文件 ({{ formatBytes(task.totalBytes) }})
+                {{ task.direction === 'send' ? '已成功发送' : '已成功接收' }} {{ task.files.length }} 个文件 ({{ formatBytes(task.totalBytes) }})
               </p>
             </div>
           </div>

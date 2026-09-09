@@ -148,7 +148,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
             (sig) => supabaseService.sendSignal(sig),
             (state) => {
               if (state === 'failed') {
-                if (activeTask.value) {
+                if (activeTask.value && activeTask.value.status !== 'completed') {
                   activeTask.value.status = 'failed'
                   activeTask.value.errorMessage =
                     '局域网直连失败：请检查两端是否连接同一 Wi-Fi，且路由器未开启 AP 隔离'
@@ -176,7 +176,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
             transferId
           )
         } catch (err: any) {
-          if (activeTask.value) {
+          if (activeTask.value && (activeTask.value.status as string) !== 'completed') {
             activeTask.value.status = 'failed'
             activeTask.value.errorMessage = formatErrorMessage(err)
           }
@@ -196,7 +196,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
             (sig) => supabaseService.sendSignal(sig),
             (state) => {
               if (state === 'failed') {
-                if (activeTask.value) {
+                if (activeTask.value && activeTask.value.status !== 'completed') {
                   activeTask.value.status = 'failed'
                   activeTask.value.errorMessage =
                     '局域网直连失败：请检查两端是否连接同一 Wi-Fi，且路由器未开启 AP 隔离'
@@ -216,7 +216,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
           activeTask.value.status = 'transferring'
           startMetricsTracking()
         } catch (err: any) {
-          if (activeTask.value) {
+          if (activeTask.value && (activeTask.value.status as string) !== 'completed') {
             activeTask.value.status = 'failed'
             activeTask.value.errorMessage = formatErrorMessage(err)
           }
@@ -257,6 +257,29 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
   }
 
 
+  const handleAllCompleted = () => {
+    if (!activeTask.value) return
+    if (activeTask.value.status === 'completed') return
+
+    activeTask.value.status = 'completed'
+    activeTask.value.progress = 100
+    activeTask.value.bytesTransferred = activeTask.value.totalBytes
+    activeTask.value.speedBytesPerSec = 0
+    activeTask.value.etaSeconds = 0
+    activeTask.value.completedTime = Date.now()
+
+    stopMetricsTracking()
+    if (settings.soundEnabled) sound.playSuccess()
+    if (settings.vibrationEnabled) sound.vibrate([150, 80, 150])
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+      })
+    } catch {}
+  }
+
   const setupTransferChannel = (controlDc: RTCDataChannel, dataDc: RTCDataChannel) => {
     activeChannel = new TransferChannel(controlDc, dataDc, {
       onProgress: (bytesDelta, currentFileIndex, currentChunkIndex) => {
@@ -274,25 +297,17 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
           activeTask.value.currentFileIndex = index
         }
       },
-      onFileComplete: () => {
+      onFileComplete: (fileIndex, _meta) => {
         // Individual file completed
+        if (activeTask.value && activeTask.value.direction === 'receive') {
+          // If all files have completed receiving, trigger completion immediately
+          if (fileIndex + 1 >= activeTask.value.files.length) {
+            handleAllCompleted()
+          }
+        }
       },
       onAllCompleted: () => {
-        if (activeTask.value) {
-          activeTask.value.status = 'completed'
-          activeTask.value.progress = 100
-          activeTask.value.completedTime = Date.now()
-        }
-        stopMetricsTracking()
-        if (settings.soundEnabled) sound.playSuccess()
-        if (settings.vibrationEnabled) sound.vibrate([150, 80, 150])
-        try {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 },
-          })
-        } catch {}
+        handleAllCompleted()
       },
       onCancel: () => {
         if (activeTask.value) {
@@ -301,7 +316,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
         stopMetricsTracking()
       },
       onError: (err) => {
-        if (activeTask.value) {
+        if (activeTask.value && activeTask.value.status !== 'completed') {
           activeTask.value.status = 'failed'
           activeTask.value.errorMessage = formatErrorMessage(err)
         }
@@ -432,6 +447,11 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
     resetActiveTask()
   }
 
+  const dismissActiveTask = () => {
+    resetActiveTask()
+    activeTask.value = null
+  }
+
   const sendTextMessage = async (targetPeer: PeerInfo, text: string) => {
     if (!text.trim()) return
 
@@ -473,6 +493,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
     acceptTransfer,
     rejectTransfer,
     cancelActiveTask,
+    dismissActiveTask,
     sendTextMessage,
   }
 }

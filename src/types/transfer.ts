@@ -55,6 +55,7 @@ export type ControlType =
   | 'file-start'
   | 'file-end'
   | 'file-ack'
+  | 'all-complete'
   | 'cancel'
   | 'text'
 
