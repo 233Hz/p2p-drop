@@ -22,7 +22,16 @@ export function useConfig() {
   let initial = defaultSettings
   if (saved) {
     try {
-      initial = { ...defaultSettings, ...JSON.parse(saved) }
+      const parsed = JSON.parse(saved)
+      initial = { ...defaultSettings, ...parsed }
+      // If user had old defaults without domestic STUN servers, upgrade them
+      if (
+        Array.isArray(initial.stunServers) &&
+        !initial.stunServers.some((s: string) => s.includes('stun.qq.com'))
+      ) {
+        // Merge without duplicates, placing DEFAULT_STUN_SERVERS first
+        initial.stunServers = Array.from(new Set([...DEFAULT_STUN_SERVERS, ...initial.stunServers]))
+      }
     } catch {
       // ignore
     }

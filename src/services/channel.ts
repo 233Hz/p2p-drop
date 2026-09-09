@@ -20,6 +20,8 @@ export class TransferChannel {
   private dataDc: RTCDataChannel
   private isCancelled: boolean = false
   private currentWriter: FileReceiverWriter | null = null
+  private writerPromise: Promise<FileReceiverWriter> | null = null
+  private pendingChunks: Array<{ fileIndex: number; chunkIndex: number; payload: ArrayBuffer }> = []
   private events: Partial<ChannelEvents> = {}
 
   constructor(controlDc: RTCDataChannel, dataDc: RTCDataChannel, events: Partial<ChannelEvents> = {}) {
@@ -56,6 +58,9 @@ export class TransferChannel {
       if (this.currentWriter) {
         await this.currentWriter.writeChunk(chunkIndex, payload)
         this.events.onProgress?.(payload.byteLength, fileIndex, chunkIndex)
+      } else if (this.writerPromise) {
+        // Buffer chunk while writer finishes async initialization
+        this.pendingChunks.push({ fileIndex, chunkIndex, payload })
       }
     }
   }
@@ -65,15 +70,27 @@ export class TransferChannel {
       case 'file-start': {
         const { fileIndex, file, transferId } = packet.payload
         this.events.onFileStart?.(fileIndex, file)
-        this.currentWriter = await createFileReceiver(file, transferId, fileIndex)
+        this.writerPromise = createFileReceiver(file, transferId, fileIndex)
+        this.currentWriter = await this.writerPromise
+        // Flush any chunks received during async writer setup
+        while (this.pendingChunks.length > 0) {
+          const item = this.pendingChunks.shift()!
+          await this.currentWriter.writeChunk(item.chunkIndex, item.payload)
+          this.events.onProgress?.(item.payload.byteLength, item.fileIndex, item.chunkIndex)
+        }
         break
       }
       case 'file-end': {
         const { fileIndex, file } = packet.payload
+        if (this.writerPromise) {
+          await this.writerPromise
+        }
         if (this.currentWriter) {
           await this.currentWriter.finish()
           this.currentWriter = null
         }
+        this.writerPromise = null
+        this.pendingChunks = []
         this.events.onFileComplete?.(fileIndex, file)
         // Send ACK back
         this.sendControl({ type: 'file-ack', payload: { fileIndex } })
@@ -81,10 +98,12 @@ export class TransferChannel {
       }
       case 'cancel': {
         this.isCancelled = true
+        this.pendingChunks = []
         if (this.currentWriter) {
           await this.currentWriter.abort()
           this.currentWriter = null
         }
+        this.writerPromise = null
         this.events.onCancel?.()
         break
       }

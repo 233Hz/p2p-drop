@@ -1,9 +1,9 @@
-import { ref, reactive, onUnmounted } from 'vue'
+import { ref, reactive, watch, onUnmounted } from 'vue'
 import confetti from 'canvas-confetti'
 import type { PeerInfo } from '@/types/peer'
 import type { FileMeta, TransferTask, SignalMessage, TextItem } from '@/types/transfer'
 import { sound } from '@/utils/sound'
-import { WebRTCService } from '@/services/webrtc'
+import { WebRTCService, type WebRTCConnectionResult } from '@/services/webrtc'
 import { TransferChannel, CHUNK_SIZE } from '@/services/channel'
 import { supabaseService } from '@/services/supabase'
 import type { AppSettings } from '@/types/config'
@@ -14,6 +14,26 @@ export interface IncomingRequest {
   files: FileMeta[]
 }
 
+function formatErrorMessage(err: any): string {
+  if (!err) return '传输连接异常中断'
+  const msg = typeof err === 'string' ? err : err.message || String(err)
+  if (msg.includes('timed out') || msg.includes('timeout') || msg.includes('超时')) {
+    return 'P2P 穿透握手超时（双方可能处于不同网络、受防火墙阻隔或运营商拦截，建议检查网络或配置 TURN 中继）'
+  }
+  if (
+    msg.includes('Symmetric NAT') ||
+    msg.includes('firewall') ||
+    msg.includes('WebRTC connection failed') ||
+    msg.includes('打洞失败')
+  ) {
+    return 'P2P 打洞失败（网络限制或对称型 NAT，建议配置 TURN 中继服务器）'
+  }
+  if (msg.includes('closed unexpectedly') || msg.includes('closed')) {
+    return '传输通道被意外中断'
+  }
+  return msg
+}
+
 export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
   const activeTask = ref<TransferTask | null>(null)
   const incomingRequest = ref<IncomingRequest | null>(null)
@@ -21,9 +41,19 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
   const textMessages = ref<TextItem[]>([])
 
   const webrtcService = new WebRTCService(settings)
-  let activeRtc: { pc: RTCPeerConnection; getChannels: () => Promise<{ control: RTCDataChannel; data: RTCDataChannel }>; close: () => void } | null = null
+  let activeRtc: WebRTCConnectionResult | null = null
   let activeChannel: TransferChannel | null = null
   let pendingFilesToSend: File[] = []
+  let earlyIceCandidates: RTCIceCandidateInit[] = []
+
+  // Keep webrtc config in sync with settings
+  watch(
+    () => settings,
+    (newSettings) => {
+      webrtcService.updateConfig(newSettings)
+    },
+    { deep: true }
+  )
 
   // Metrics interval
   let speedInterval: any = null
@@ -77,6 +107,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
       activeRtc = null
     }
     pendingFilesToSend = []
+    earlyIceCandidates = []
   }
 
   // Handle incoming Supabase Realtime signals
@@ -107,6 +138,9 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
 
         // Accepted: Initiate WebRTC connection as offerer
         activeTask.value.status = 'connecting'
+        const cachedCandidates = [...earlyIceCandidates]
+        earlyIceCandidates = []
+
         try {
           activeRtc = await webrtcService.initiateConnection(
             selfPeer.peerId,
@@ -116,10 +150,12 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
               if (state === 'failed') {
                 if (activeTask.value) {
                   activeTask.value.status = 'failed'
-                  activeTask.value.errorMessage = 'P2P 打洞失败（网络限制或对称型 NAT）'
+                  activeTask.value.errorMessage =
+                    'P2P 穿透失败（网络隔离或对称型 NAT，建议配置 TURN 中继）'
                 }
               }
-            }
+            },
+            cachedCandidates
           )
 
           const channels = await activeRtc.getChannels()
@@ -137,7 +173,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
         } catch (err: any) {
           if (activeTask.value) {
             activeTask.value.status = 'failed'
-            activeTask.value.errorMessage = err.message || '传输建连失败'
+            activeTask.value.errorMessage = formatErrorMessage(err)
           }
         }
         break
@@ -146,6 +182,9 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
       case 'webrtc-offer': {
         if (!activeTask.value || activeTask.value.direction !== 'receive') return
         const offer = signal.payload
+        const cachedCandidates = [...earlyIceCandidates]
+        earlyIceCandidates = []
+
         try {
           activeRtc = await webrtcService.acceptConnection(
             selfPeer.peerId,
@@ -156,10 +195,12 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
               if (state === 'failed') {
                 if (activeTask.value) {
                   activeTask.value.status = 'failed'
-                  activeTask.value.errorMessage = 'P2P 打洞失败（网络限制或对称型 NAT）'
+                  activeTask.value.errorMessage =
+                    'P2P 穿透失败（网络隔离或对称型 NAT，建议配置 TURN 中继）'
                 }
               }
-            }
+            },
+            cachedCandidates
           )
 
           const channels = await activeRtc.getChannels()
@@ -169,25 +210,29 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
         } catch (err: any) {
           if (activeTask.value) {
             activeTask.value.status = 'failed'
-            activeTask.value.errorMessage = err.message || '接收协商失败'
+            activeTask.value.errorMessage = formatErrorMessage(err)
           }
         }
         break
       }
 
       case 'webrtc-answer': {
-        if (activeRtc && activeRtc.pc) {
-          await activeRtc.pc.setRemoteDescription(new RTCSessionDescription(signal.payload))
+        if (activeRtc && signal.payload) {
+          try {
+            await activeRtc.setRemoteDescription(signal.payload)
+          } catch (err: any) {
+            console.error('Failed to set remote answer:', err)
+          }
         }
         break
       }
 
       case 'webrtc-ice': {
-        if (activeRtc && activeRtc.pc && signal.payload) {
-          try {
-            await activeRtc.pc.addIceCandidate(new RTCIceCandidate(signal.payload))
-          } catch {
-            // ignore
+        if (signal.payload) {
+          if (activeRtc) {
+            await activeRtc.addRemoteCandidate(signal.payload)
+          } else {
+            earlyIceCandidates.push(signal.payload)
           }
         }
         break
@@ -202,6 +247,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
       }
     }
   }
+
 
   const setupTransferChannel = (controlDc: RTCDataChannel, dataDc: RTCDataChannel) => {
     activeChannel = new TransferChannel(controlDc, dataDc, {
@@ -249,7 +295,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
       onError: (err) => {
         if (activeTask.value) {
           activeTask.value.status = 'failed'
-          activeTask.value.errorMessage = err
+          activeTask.value.errorMessage = formatErrorMessage(err)
         }
         stopMetricsTracking()
         if (settings.soundEnabled) sound.playError()

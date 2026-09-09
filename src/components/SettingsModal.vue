@@ -37,7 +37,7 @@
             </label>
           </div>
           <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2.5">
-            默认已内置 Google 与 Cloudflare 免费公共 STUN 节点。如处在对称型 NAT 或高安全隔离网络，可配置自定义 TURN 中继服务器。
+            默认已内置腾讯云、小米、B站、Cloudflare 等高可用 STUN 穿透节点与公共 TURN 回退中继。如处在强对称型 NAT 或企业隔离网络，可在此配置专属 TURN 中继服务器。
           </p>
 
           <div class="space-y-2">
