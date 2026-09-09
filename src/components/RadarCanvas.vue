@@ -1,25 +1,17 @@
 <template>
   <div 
-    class="relative w-full flex-1 flex items-center justify-center overflow-hidden select-none py-6 sm:py-12"
+    class="relative w-full flex-1 flex items-center justify-center overflow-hidden select-none py-6 sm:py-12 bg-[#1c1c1e]"
     @dragover.prevent="onGlobalDragOver"
     @dragleave.prevent="onGlobalDragLeave"
-    @drop.prevent="onGlobalDrop"
+    @drop.prevent="onDrop"
   >
-    <!-- Radar Concentric Rings & Sweep Animation -->
+    <!-- Radar Concentric Reference Rings (SVG Precision Circles) -->
     <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <!-- Outer ring 3 -->
-      <div class="w-[320px] h-[320px] sm:w-[580px] sm:h-[580px] rounded-full border border-slate-200/60 dark:border-slate-800/60 animate-pulse-slow"></div>
-      <!-- Middle ring 2 -->
-      <div class="absolute w-[220px] h-[220px] sm:w-[400px] sm:h-[400px] rounded-full border border-slate-200/80 dark:border-slate-800/80"></div>
-      <!-- Inner ring 1 -->
-      <div class="absolute w-[130px] h-[130px] sm:w-[240px] sm:h-[240px] rounded-full border border-slate-300/80 dark:border-slate-700/80"></div>
-
-      <!-- Radar Light Cone (Animated Sweep) -->
-      <div 
-        v-if="status === 'CONNECTED'"
-        class="absolute w-[320px] h-[320px] sm:w-[580px] sm:h-[580px] rounded-full opacity-40 dark:opacity-20 animate-radar-sweep origin-center pointer-events-none"
-        style="background: conic-gradient(from 0deg, transparent 0deg, rgba(99, 102, 241, 0.15) 60deg, transparent 60.1deg);"
-      ></div>
+      <svg class="w-[340px] h-[340px] sm:w-[600px] sm:h-[600px]" viewBox="0 0 600 600">
+        <circle cx="300" cy="300" r="280" fill="none" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1" />
+        <circle cx="300" cy="300" r="190" fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1" />
+        <circle cx="300" cy="300" r="110" fill="none" stroke="rgba(255, 255, 255, 0.10)" stroke-width="1" />
+      </svg>
     </div>
 
     <!-- Center Node (Self) -->
@@ -35,7 +27,7 @@
     <div 
       v-for="(peer, index) in peers" 
       :key="peer.peerId"
-      class="absolute z-20 transition-all duration-700 ease-out"
+      class="absolute z-20 transition-transform duration-500 ease-out"
       :style="getPeerPositionStyle(index, peers.length)"
     >
       <PeerNode
@@ -49,33 +41,33 @@
     <!-- Empty State Guide -->
     <div 
       v-if="peers.length === 0"
-      class="absolute bottom-4 sm:bottom-8 w-[92%] max-w-sm px-4 py-2.5 sm:px-6 sm:py-3 rounded-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-md text-center transition-all z-20"
+      class="absolute bottom-4 sm:bottom-8 w-[92%] max-w-sm p-4 md:p-6 rounded-xl bg-[#2c2c2e] border border-white/8 text-center transition-colors duration-200 z-20"
     >
-      <p class="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200">
+      <h3 class="font-serif font-semibold text-white/95 text-sm sm:text-base">
         正在雷达侦测同频设备...
-      </p>
-      <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-normal">
-        同一 Wi-Fi 或局域网下的设备打开即被发现，或点击右上角
-        <span class="text-indigo-600 dark:text-indigo-400 font-semibold cursor-pointer underline" @click="$emit('open-qr')">扫码分享</span>
+      </h3>
+      <p class="text-xs text-white/70 mt-1.5 leading-relaxed">
+        同一 Wi-Fi 或局域网下的设备打开网页即可被发现，或点击右上角
+        <span class="text-[#0a84ff] underline cursor-pointer" @click="$emit('open-qr')">扫码分享</span>
         让其他设备快速加入。
       </p>
     </div>
 
     <!-- Global Drag Overlay Hint -->
-    <transition enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100" leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
+    <transition enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
       <div 
         v-if="isGlobalDragging"
-        class="absolute inset-3 sm:inset-10 rounded-3xl border-2 border-dashed border-indigo-500 bg-indigo-50/80 dark:bg-indigo-950/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center pointer-events-none"
+        class="absolute inset-4 sm:inset-8 rounded-xl border border-[#0a84ff]/40 bg-[#1c1c1e]/90 backdrop-blur-md z-30 flex flex-col items-center justify-center pointer-events-none p-6 text-center"
       >
-        <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-indigo-500 text-white flex items-center justify-center shadow-lg shadow-indigo-500/30 mb-2.5 animate-bounce">
-          <svg class="w-7 h-7 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="w-12 h-12 rounded-lg bg-[#3a3a3c] border border-white/10 text-[#0a84ff] flex items-center justify-center mb-3">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
           </svg>
         </div>
-        <p class="text-sm sm:text-base font-bold text-indigo-900 dark:text-indigo-100">
-          {{ peers.length > 0 ? '将文件拖拽至目标设备头像发起传输' : '拖放文件' }}
-        </p>
-        <p class="text-xs text-indigo-700 dark:text-indigo-300 mt-1">
+        <h3 class="font-serif font-semibold text-white/95 text-base">
+          {{ peers.length > 0 ? '将文件拖拽至目标设备卡片发起传输' : '拖放文件' }}
+        </h3>
+        <p class="text-xs text-white/70 mt-1">
           {{ peers.length === 1 ? '松开将直接发给当前唯一的在线设备' : '支持多选文件与大文件直传' }}
         </p>
       </div>
@@ -105,8 +97,7 @@ const isGlobalDragging = ref(false)
 
 const getPeerPositionStyle = (index: number, total: number) => {
   const isDesktop = typeof window !== 'undefined' ? window.innerWidth >= 640 : true
-  // Safe radius: 110px on mobile fits within standard mobile screen widths without clipping
-  const radius = isDesktop ? 200 : 110
+  const radius = isDesktop ? 200 : 120
 
   const angleStep = (2 * Math.PI) / total
   const angle = -Math.PI / 2 + index * angleStep
@@ -132,7 +123,7 @@ const onGlobalDragLeave = (e: DragEvent) => {
   isGlobalDragging.value = false
 }
 
-const onGlobalDrop = (e: DragEvent) => {
+const onDrop = (e: DragEvent) => {
   isGlobalDragging.value = false
   if (props.peers.length === 1 && e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
     emit('send-files', props.peers[0], Array.from(e.dataTransfer.files))

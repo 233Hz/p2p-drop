@@ -1,29 +1,29 @@
 <template>
   <div 
     v-if="isOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
   >
-    <div class="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col max-h-[90vh] animate-scale-up">
+    <div class="w-full max-w-lg bg-[#2c2c2e] rounded-xl border border-white/10 p-5 sm:p-6 flex flex-col max-h-[90vh] shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
       <!-- Header -->
-      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-        <div class="flex items-center space-x-2">
-          <div class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-            <Settings class="w-5 h-5" />
+      <div class="flex items-center justify-between pb-4 border-b border-white/8">
+        <div class="flex items-center space-x-2.5">
+          <div class="p-2 rounded-lg bg-[#3a3a3c] border border-white/8 text-white/90">
+            <Settings class="w-4 h-4" />
           </div>
           <div>
-            <h3 class="text-base font-bold text-slate-900 dark:text-slate-100">
+            <h3 class="font-serif font-semibold text-white/95 text-base">
               系统与网络设置
             </h3>
-            <p class="text-xs text-slate-500 dark:text-slate-400">
+            <p class="text-xs text-white/40 font-sans">
               个性化网络穿透与交互偏好
             </p>
           </div>
         </div>
         <button 
           @click="$emit('close')"
-          class="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition"
+          class="p-1.5 rounded-lg text-white/40 hover:text-white/90 hover:bg-white/8 transition-colors duration-200"
         >
-          <X class="w-5 h-5" />
+          <X class="w-4 h-4" />
         </button>
       </div>
 
@@ -32,48 +32,48 @@
         <!-- WebRTC ICE / STUN / TURN -->
         <div>
           <div class="flex items-center justify-between mb-1.5">
-            <label class="text-xs font-bold text-slate-900 dark:text-slate-100">
+            <label class="font-serif font-semibold text-xs text-white/90">
               内网传输与中继设置
             </label>
           </div>
-          <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2.5">
+          <p class="text-xs text-white/40 leading-relaxed mb-3">
             默认已开启局域网内网直连传输模式，文件数据仅在同一 Wi-Fi / 局域网内的两台设备之间直接传输，不经过任何外部服务器，保护隐私且高速。如确实需要跨外网中继，可在此配置专属私有 TURN 服务器。
           </p>
 
-          <div class="space-y-2">
+          <div class="space-y-2.5">
             <div>
-              <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">
+              <label class="text-[11px] font-mono text-white/60 block mb-1">
                 TURN Server URL (选填)
               </label>
               <input
                 v-model="form.turnUrls"
                 type="text"
                 placeholder="turn:turn.example.com:3478"
-                class="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                class="w-full px-3 py-2 text-xs font-mono bg-[#1c1c1e] border border-white/10 rounded-lg text-white/90 placeholder-white/30 focus:outline-none focus:border-white/25 transition-colors duration-200"
               />
             </div>
 
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">
+                <label class="text-[11px] font-mono text-white/60 block mb-1">
                   TURN 用户名 (选填)
                 </label>
                 <input
                   v-model="form.turnUsername"
                   type="text"
                   placeholder="username"
-                  class="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  class="w-full px-3 py-2 text-xs font-mono bg-[#1c1c1e] border border-white/10 rounded-lg text-white/90 placeholder-white/30 focus:outline-none focus:border-white/25 transition-colors duration-200"
                 />
               </div>
               <div>
-                <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">
+                <label class="text-[11px] font-mono text-white/60 block mb-1">
                   TURN 凭据/密码 (选填)
                 </label>
                 <input
                   v-model="form.turnCredential"
                   type="password"
                   placeholder="credential"
-                  class="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  class="w-full px-3 py-2 text-xs font-mono bg-[#1c1c1e] border border-white/10 rounded-lg text-white/90 placeholder-white/30 focus:outline-none focus:border-white/25 transition-colors duration-200"
                 />
               </div>
             </div>
@@ -81,52 +81,52 @@
         </div>
 
         <!-- Feedback & Sound toggles -->
-        <div class="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
-          <label class="text-xs font-bold text-slate-900 dark:text-slate-100 block">
+        <div class="pt-4 border-t border-white/8 space-y-3">
+          <label class="font-serif font-semibold text-xs text-white/90 block">
             交互与提示音
           </label>
 
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between py-1">
             <div>
-              <p class="text-xs font-medium text-slate-800 dark:text-slate-200">传输提示音效</p>
-              <p class="text-[11px] text-slate-500 dark:text-slate-400">请求到达、传输成功或失败时播放 Web Audio 合成音</p>
+              <p class="text-xs font-medium text-white/90">传输提示音效</p>
+              <p class="text-[11px] text-white/40">请求到达、传输成功或失败时播放 Web Audio 合成音</p>
             </div>
             <input
               v-model="form.soundEnabled"
               type="checkbox"
-              class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700"
+              class="w-4 h-4 rounded bg-[#1c1c1e] border border-white/20 text-[#0a84ff] accent-[#0a84ff] focus:outline-none"
             />
           </div>
 
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between py-1">
             <div>
-              <p class="text-xs font-medium text-slate-800 dark:text-slate-200">触觉振动反馈</p>
-              <p class="text-[11px] text-slate-500 dark:text-slate-400">移动端设备收到传输请求或完成时触发轻微振动</p>
+              <p class="text-xs font-medium text-white/90">触觉振动反馈</p>
+              <p class="text-[11px] text-white/40">移动端设备收到传输请求或完成时触发轻微振动</p>
             </div>
             <input
               v-model="form.vibrationEnabled"
               type="checkbox"
-              class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700"
+              class="w-4 h-4 rounded bg-[#1c1c1e] border border-white/20 text-[#0a84ff] accent-[#0a84ff] focus:outline-none"
             />
           </div>
         </div>
       </div>
 
       <!-- Footer Action -->
-      <div class="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-        <span v-if="savedToast" class="text-xs text-emerald-600 font-medium">设置已成功保存！</span>
+      <div class="pt-4 border-t border-white/8 flex items-center justify-between">
+        <span v-if="savedToast" class="text-xs text-[#30d158] font-mono">设置已成功保存！</span>
         <span v-else></span>
 
         <div class="flex items-center space-x-2">
           <button
             @click="$emit('close')"
-            class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            class="px-4 py-2 rounded-lg text-xs font-medium text-white/70 hover:text-white/90 hover:bg-white/8 transition-colors duration-200"
           >
             取消
           </button>
           <button
             @click="handleSave"
-            class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-md shadow-indigo-500/20 transition active:scale-95"
+            class="px-5 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#0071e3] text-white text-xs font-medium transition-colors duration-200"
           >
             保存并应用
           </button>
