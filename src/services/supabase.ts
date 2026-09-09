@@ -8,6 +8,10 @@ export interface SupabaseSignalingHandlers {
   onStatusChange: (status: 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR') => void
 }
 
+const DEFAULT_SUPABASE_URL = 'https://angslcexviasghvjbcqe.supabase.co'
+const DEFAULT_SUPABASE_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFuZ3NsY2V4dmlhc2dodmpiY3FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5NDQxMjksImV4cCI6MjEwNDUyMDEyOX0.rlnVQgDT6hzsE2xVCXW2dH_bIDU73af3YqE6yV-BEDE'
+
 export class SupabaseSignalingService {
   private client: SupabaseClient | null = null
   private channel: RealtimeChannel | null = null
@@ -23,8 +27,8 @@ export class SupabaseSignalingService {
   }
 
   public isConfigured(): boolean {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY
     return Boolean(supabaseUrl && supabaseKey && supabaseUrl.startsWith('http'))
   }
 
@@ -48,8 +52,8 @@ export class SupabaseSignalingService {
     handlers: SupabaseSignalingHandlers
   ): Promise<boolean> {
     if (!this.client) {
-      const url = import.meta.env.VITE_SUPABASE_URL
-      const key = import.meta.env.VITE_SUPABASE_ANON_KEY
+      const url = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL
+      const key = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY
       if (url && key && url.startsWith('http')) {
         this.initClient(url, key)
       } else {
@@ -59,16 +63,14 @@ export class SupabaseSignalingService {
       }
     }
 
-    if (this.channel) {
-      if (this.client) {
-        try {
-          await this.client.removeChannel(this.channel)
-        } catch {}
-      } else {
-        await this.channel.unsubscribe()
-      }
-      this.channel = null
+    if (this.client) {
+      try {
+        await this.client.removeAllChannels()
+      } catch {}
+    } else if (this.channel) {
+      await this.channel.unsubscribe()
     }
+    this.channel = null
 
     this.currentRoomId = roomId
     this.selfPeer = selfPeer
@@ -88,10 +90,14 @@ export class SupabaseSignalingService {
 
       for (const key in state) {
         const presences = state[key]
-        if (presences && presences.length > 0) {
-          const p = presences[0] as unknown as PeerInfo
-          if (p.peerId !== selfPeer.peerId) {
-            peers.push(p)
+        if (presences && Array.isArray(presences)) {
+          for (const item of presences) {
+            const p = item as unknown as PeerInfo
+            if (p && p.peerId && p.peerId !== selfPeer.peerId) {
+              if (!peers.some((existing) => existing.peerId === p.peerId)) {
+                peers.push(p)
+              }
+            }
           }
         }
       }
@@ -115,6 +121,7 @@ export class SupabaseSignalingService {
         handlers.onStatusChange('CONNECTED')
         try {
           await this.channel?.track(JSON.parse(JSON.stringify(selfPeer)))
+          syncPresence()
         } catch (err) {
           console.error('Failed to track selfPeer:', err)
         }
@@ -148,16 +155,14 @@ export class SupabaseSignalingService {
   }
 
   public async leaveRoom() {
-    if (this.channel) {
-      if (this.client) {
-        try {
-          await this.client.removeChannel(this.channel)
-        } catch {}
-      } else {
-        await this.channel.unsubscribe()
-      }
-      this.channel = null
+    if (this.client) {
+      try {
+        await this.client.removeAllChannels()
+      } catch {}
+    } else if (this.channel) {
+      await this.channel.unsubscribe()
     }
+    this.channel = null
     this.currentRoomId = null
   }
 }

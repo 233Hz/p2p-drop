@@ -25,9 +25,14 @@
         </div>
       </div>
 
-      <p class="text-xs text-slate-500 dark:text-slate-400 mb-4 px-2">
-        使用微信、浏览器或相机扫描二维码，即可让手机与电脑直连互传
+      <p class="text-xs text-slate-500 dark:text-slate-400 mb-2 px-2">
+        使用手机系统自带相机、浏览器扫描二维码即可秒级加入同房间
       </p>
+
+      <!-- WeChat Tip -->
+      <div class="w-full px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/60 text-[11px] text-amber-700 dark:text-amber-300 mb-4 text-left leading-relaxed">
+        💡 提示：若在微信中扫码打开，请点击右上角【···】选择【在浏览器中打开】以确保 P2P 直连与下载不受限。
+      </div>
 
       <!-- Room Code Switcher -->
       <div class="w-full rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3 border border-slate-200/60 dark:border-slate-700/60 mb-4 text-left">
@@ -95,6 +100,13 @@ const qrDataUrl = ref('')
 const roomInput = ref(props.roomId)
 const copied = ref(false)
 
+const getShareUrl = () => {
+  if (typeof window === 'undefined') return ''
+  const base = window.location.origin + window.location.pathname
+  const cleanRoom = props.roomId.startsWith('lan-') ? props.roomId.replace('lan-', '') : props.roomId
+  return `${base}#/room/${cleanRoom}`
+}
+
 watch(
   () => props.roomId,
   (newRoom) => {
@@ -116,7 +128,7 @@ watch(
 const generateQr = async () => {
   if (typeof window === 'undefined') return
   try {
-    const url = window.location.href
+    const url = getShareUrl()
     qrDataUrl.value = await QRCode.toDataURL(url, {
       margin: 1,
       width: 280,
@@ -132,14 +144,15 @@ const generateQr = async () => {
 
 const copyShareLink = async () => {
   try {
-    await navigator.clipboard.writeText(window.location.href)
+    await navigator.clipboard.writeText(getShareUrl())
     copied.value = true
     setTimeout(() => (copied.value = false), 2500)
   } catch {}
 }
 
 const handleSwitchRoom = () => {
-  if (!roomInput.value.trim()) return
-  emit('switch-room', roomInput.value.trim())
+  const trimmed = roomInput.value.trim().toLowerCase()
+  if (!trimmed) return
+  emit('switch-room', trimmed)
 }
 </script>

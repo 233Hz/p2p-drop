@@ -61,5 +61,5 @@ async function hashString(str: string): Promise<string> {
   const data = encoder.encode(str + '_p2p_salt')
   const hashBuffer = await crypto.subtle.digest('SHA-256', data)
   const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return 'lan-' + hashArray.slice(0, 4).map(b => b.toString(16).padStart(2, '0')).join('')
+  return hashArray.slice(0, 4).map((b) => b.toString(16).padStart(2, '0')).join('')
 }
