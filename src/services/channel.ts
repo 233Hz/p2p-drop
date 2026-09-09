@@ -8,9 +8,9 @@ export const BUFFERED_AMOUNT_LOW_THRESHOLD = 256 * 1024 // 256 KB
 export interface ChannelEvents {
   onProgress: (bytesDelta: number, currentFileIndex: number, currentChunkIndex: number) => void
   onFileStart: (fileIndex: number, file: FileMeta) => void
-  onFileComplete: (fileIndex: number, file: FileMeta) => void
+  onFileComplete: (fileIndex: number, file: FileMeta, blob?: Blob) => void
   onAllCompleted: () => void
-  onError: (error: string) => void
+  onError: (error: any) => void
   onCancel: () => void
   onTextReceived: (item: TextItem) => void
 }
@@ -21,7 +21,7 @@ export class TransferChannel {
   private isCancelled: boolean = false
   private currentWriter: FileReceiverWriter | null = null
   private writerPromise: Promise<FileReceiverWriter> | null = null
-  private pendingChunks: Array<{ fileIndex: number; chunkIndex: number; payload: ArrayBuffer }> = []
+  private writeQueue: Promise<void> = Promise.resolve()
   private events: Partial<ChannelEvents> = {}
 
   constructor(controlDc: RTCDataChannel, dataDc: RTCDataChannel, events: Partial<ChannelEvents> = {}) {
@@ -45,7 +45,7 @@ export class TransferChannel {
     this.dataDc.binaryType = 'arraybuffer'
     this.dataDc.bufferedAmountLowThreshold = BUFFERED_AMOUNT_LOW_THRESHOLD
 
-    this.dataDc.onmessage = async (event) => {
+    this.dataDc.onmessage = (event) => {
       if (typeof event.data === 'string') return
       const arrayBuffer = event.data as ArrayBuffer
       if (arrayBuffer.byteLength < 8) return
@@ -55,52 +55,80 @@ export class TransferChannel {
       const chunkIndex = view.getUint32(4)
       const payload = arrayBuffer.slice(8)
 
-      if (this.currentWriter) {
-        await this.currentWriter.writeChunk(chunkIndex, payload)
-        this.events.onProgress?.(payload.byteLength, fileIndex, chunkIndex)
-      } else if (this.writerPromise) {
-        // Buffer chunk while writer finishes async initialization
-        this.pendingChunks.push({ fileIndex, chunkIndex, payload })
-      }
+      this.writeQueue = this.writeQueue
+        .then(async () => {
+          if (this.isCancelled) return
+          if (!this.currentWriter && this.writerPromise) {
+            this.currentWriter = await this.writerPromise
+          }
+          if (this.currentWriter) {
+            await this.currentWriter.writeChunk(chunkIndex, payload)
+            this.events.onProgress?.(payload.byteLength, fileIndex, chunkIndex)
+          }
+        })
+        .catch((err) => {
+          console.error('Error writing chunk in dataDc:', err)
+        })
     }
   }
 
-  private async handleControlPacket(packet: ControlPacket) {
+  private handleControlPacket(packet: ControlPacket) {
     switch (packet.type) {
       case 'file-start': {
         const { fileIndex, file, transferId } = packet.payload
         this.events.onFileStart?.(fileIndex, file)
         this.writerPromise = createFileReceiver(file, transferId, fileIndex)
-        this.currentWriter = await this.writerPromise
-        // Flush any chunks received during async writer setup
-        while (this.pendingChunks.length > 0) {
-          const item = this.pendingChunks.shift()!
-          await this.currentWriter.writeChunk(item.chunkIndex, item.payload)
-          this.events.onProgress?.(item.payload.byteLength, item.fileIndex, item.chunkIndex)
-        }
+        this.writeQueue = this.writeQueue
+          .then(async () => {
+            if (this.isCancelled) return
+            this.currentWriter = await this.writerPromise
+          })
+          .catch((err) => {
+            console.error('Failed to initialize file writer:', err)
+            this.events.onError?.(err)
+          })
         break
       }
       case 'file-end': {
         const { fileIndex, file } = packet.payload
-        if (this.writerPromise) {
-          await this.writerPromise
-        }
-        if (this.currentWriter) {
-          await this.currentWriter.finish()
-          this.currentWriter = null
-        }
-        this.writerPromise = null
-        this.pendingChunks = []
-        this.events.onFileComplete?.(fileIndex, file)
-        // Send ACK back
-        this.sendControl({ type: 'file-ack', payload: { fileIndex } })
+        this.writeQueue = this.writeQueue
+          .then(async () => {
+            if (this.isCancelled) return
+            if (!this.currentWriter && this.writerPromise) {
+              this.currentWriter = await this.writerPromise
+            }
+            let blob: Blob | undefined
+            if (this.currentWriter) {
+              blob = (await this.currentWriter.finish()) || undefined
+              this.currentWriter = null
+            }
+            this.writerPromise = null
+            this.events.onFileComplete?.(fileIndex, file, blob)
+            // Send ACK back
+            this.sendControl({ type: 'file-ack', payload: { fileIndex } })
+          })
+          .catch((err) => {
+            console.error('Error finishing file in data channel:', err)
+            this.events.onError?.(err)
+          })
+        break
+      }
+      case 'all-completed': {
+        this.writeQueue = this.writeQueue
+          .then(async () => {
+            if (this.isCancelled) return
+            this.events.onAllCompleted?.()
+          })
+          .catch((err) => {
+            console.error('Error completing all files:', err)
+          })
         break
       }
       case 'cancel': {
         this.isCancelled = true
-        this.pendingChunks = []
+        this.writeQueue = Promise.resolve()
         if (this.currentWriter) {
-          await this.currentWriter.abort()
+          this.currentWriter.abort().catch(() => {})
           this.currentWriter = null
         }
         this.writerPromise = null
@@ -187,6 +215,10 @@ export class TransferChannel {
     }
 
     if (!this.isCancelled) {
+      this.sendControl({
+        type: 'all-completed',
+        payload: {},
+      })
       this.events.onAllCompleted?.()
     }
   }
@@ -259,7 +291,7 @@ export class RelayChannel {
   private isCancelled: boolean = false
   private currentWriter: FileReceiverWriter | null = null
   private writerPromise: Promise<FileReceiverWriter> | null = null
-  private pendingChunks: Array<{ fileIndex: number; chunkIndex: number; payload: ArrayBuffer }> = []
+  private writeQueue: Promise<void> = Promise.resolve()
   private events: Partial<ChannelEvents> = {}
 
   constructor(
@@ -280,34 +312,53 @@ export class RelayChannel {
         const { fileIndex, file, transferId } = packet.payload
         this.events.onFileStart?.(fileIndex, file)
         this.writerPromise = createFileReceiver(file, transferId, fileIndex)
-        this.writerPromise.then(async (writer) => {
-          this.currentWriter = writer
-          while (this.pendingChunks.length > 0) {
-            const item = this.pendingChunks.shift()!
-            await this.currentWriter.writeChunk(item.chunkIndex, item.payload)
-            this.events.onProgress?.(item.payload.byteLength, item.fileIndex, item.chunkIndex)
-          }
-        })
+        this.writeQueue = this.writeQueue
+          .then(async () => {
+            if (this.isCancelled) return
+            this.currentWriter = await this.writerPromise
+          })
+          .catch((err) => {
+            console.error('Failed to initialize file writer in relay:', err)
+            this.events.onError?.(err)
+          })
         break
       }
       case 'file-end': {
         const { fileIndex, file } = packet.payload
-        const finalize = async () => {
-          if (this.writerPromise) await this.writerPromise
-          if (this.currentWriter) {
-            await this.currentWriter.finish()
-            this.currentWriter = null
-          }
-          this.writerPromise = null
-          this.pendingChunks = []
-          this.events.onFileComplete?.(fileIndex, file)
-        }
-        finalize()
+        this.writeQueue = this.writeQueue
+          .then(async () => {
+            if (this.isCancelled) return
+            if (!this.currentWriter && this.writerPromise) {
+              this.currentWriter = await this.writerPromise
+            }
+            let blob: Blob | undefined
+            if (this.currentWriter) {
+              blob = (await this.currentWriter.finish()) || undefined
+              this.currentWriter = null
+            }
+            this.writerPromise = null
+            this.events.onFileComplete?.(fileIndex, file, blob)
+          })
+          .catch((err) => {
+            console.error('Error finishing file in relay channel:', err)
+            this.events.onError?.(err)
+          })
+        break
+      }
+      case 'all-completed': {
+        this.writeQueue = this.writeQueue
+          .then(async () => {
+            if (this.isCancelled) return
+            this.events.onAllCompleted?.()
+          })
+          .catch((err) => {
+            console.error('Error completing all files in relay:', err)
+          })
         break
       }
       case 'cancel': {
         this.isCancelled = true
-        this.pendingChunks = []
+        this.writeQueue = Promise.resolve()
         if (this.currentWriter) {
           this.currentWriter.abort().catch(() => {})
           this.currentWriter = null
@@ -323,14 +374,22 @@ export class RelayChannel {
     }
   }
 
-  public async handleChunk(fileIndex: number, chunkIndex: number, base64Data: string) {
-    const payload = base64ToArrayBuffer(base64Data)
-    if (this.currentWriter) {
-      await this.currentWriter.writeChunk(chunkIndex, payload)
-      this.events.onProgress?.(payload.byteLength, fileIndex, chunkIndex)
-    } else if (this.writerPromise) {
-      this.pendingChunks.push({ fileIndex, chunkIndex, payload })
-    }
+  public handleChunk(fileIndex: number, chunkIndex: number, base64Data: string) {
+    this.writeQueue = this.writeQueue
+      .then(async () => {
+        if (this.isCancelled) return
+        const payload = base64ToArrayBuffer(base64Data)
+        if (!this.currentWriter && this.writerPromise) {
+          this.currentWriter = await this.writerPromise
+        }
+        if (this.currentWriter) {
+          await this.currentWriter.writeChunk(chunkIndex, payload)
+          this.events.onProgress?.(payload.byteLength, fileIndex, chunkIndex)
+        }
+      })
+      .catch((err) => {
+        console.error('Error writing chunk in relay channel:', err)
+      })
   }
 
   public async sendFiles(files: File[], fileMetas: FileMeta[], transferId: string) {
@@ -408,6 +467,15 @@ export class RelayChannel {
     }
 
     if (!this.isCancelled) {
+      this.sendSignal({
+        from: this.selfPeerId,
+        to: this.targetPeerId,
+        type: 'relay-control',
+        payload: {
+          type: 'all-completed',
+          payload: {},
+        },
+      })
       this.events.onAllCompleted?.()
     }
   }
@@ -426,6 +494,7 @@ export class RelayChannel {
 
   public cancel() {
     this.isCancelled = true
+    this.writeQueue = Promise.resolve()
     this.sendSignal({
       from: this.selfPeerId,
       to: this.targetPeerId,
@@ -440,9 +509,9 @@ export class RelayChannel {
 
   public close() {
     this.isCancelled = true
+    this.writeQueue = Promise.resolve()
     this.currentWriter = null
     this.writerPromise = null
-    this.pendingChunks = []
   }
 }
 

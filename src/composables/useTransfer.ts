@@ -334,6 +334,26 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
   }
 
 
+  const triggerTaskCompleted = () => {
+    if (!activeTask.value) return
+    if (activeTask.value.status === 'completed') return
+
+    activeTask.value.status = 'completed'
+    activeTask.value.progress = 100
+    activeTask.value.bytesTransferred = activeTask.value.totalBytes
+    activeTask.value.completedTime = Date.now()
+    stopMetricsTracking()
+    if (settings.soundEnabled) sound.playSuccess()
+    if (settings.vibrationEnabled) sound.vibrate([150, 80, 150])
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+      })
+    } catch {}
+  }
+
   const setupTransferChannel = (controlDc: RTCDataChannel, dataDc: RTCDataChannel) => {
     activeChannel = new TransferChannel(controlDc, dataDc, {
       onProgress: (bytesDelta, currentFileIndex, currentChunkIndex) => {
@@ -351,25 +371,22 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
           activeTask.value.currentFileIndex = index
         }
       },
-      onFileComplete: () => {
-        // Individual file completed
+      onFileComplete: (index, _meta, blob) => {
+        if (activeTask.value && activeTask.value.files[index]) {
+          if (blob) {
+            activeTask.value.files[index].blobUrl = URL.createObjectURL(blob)
+          }
+        }
+        if (activeTask.value && activeTask.value.direction === 'receive') {
+          if (index >= activeTask.value.files.length - 1) {
+            setTimeout(() => {
+              triggerTaskCompleted()
+            }, 100)
+          }
+        }
       },
       onAllCompleted: () => {
-        if (activeTask.value) {
-          activeTask.value.status = 'completed'
-          activeTask.value.progress = 100
-          activeTask.value.completedTime = Date.now()
-        }
-        stopMetricsTracking()
-        if (settings.soundEnabled) sound.playSuccess()
-        if (settings.vibrationEnabled) sound.vibrate([150, 80, 150])
-        try {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 },
-          })
-        } catch {}
+        triggerTaskCompleted()
       },
       onCancel: () => {
         if (activeTask.value) {
@@ -414,23 +431,22 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
             activeTask.value.currentFileIndex = index
           }
         },
-        onFileComplete: () => {},
-        onAllCompleted: () => {
-          if (activeTask.value) {
-            activeTask.value.status = 'completed'
-            activeTask.value.progress = 100
-            activeTask.value.completedTime = Date.now()
+        onFileComplete: (index, _meta, blob) => {
+          if (activeTask.value && activeTask.value.files[index]) {
+            if (blob) {
+              activeTask.value.files[index].blobUrl = URL.createObjectURL(blob)
+            }
           }
-          stopMetricsTracking()
-          if (settings.soundEnabled) sound.playSuccess()
-          if (settings.vibrationEnabled) sound.vibrate([150, 80, 150])
-          try {
-            confetti({
-              particleCount: 80,
-              spread: 70,
-              origin: { y: 0.6 },
-            })
-          } catch {}
+          if (activeTask.value && activeTask.value.direction === 'receive') {
+            if (index >= activeTask.value.files.length - 1) {
+              setTimeout(() => {
+                triggerTaskCompleted()
+              }, 100)
+            }
+          }
+        },
+        onAllCompleted: () => {
+          triggerTaskCompleted()
         },
         onCancel: () => {
           if (activeTask.value) {
@@ -571,6 +587,20 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
     resetActiveTask()
   }
 
+  const dismissTask = () => {
+    if (activeTask.value?.files) {
+      activeTask.value.files.forEach((f) => {
+        if (f.blobUrl) {
+          try {
+            URL.revokeObjectURL(f.blobUrl)
+          } catch {}
+        }
+      })
+    }
+    activeTask.value = null
+    resetActiveTask()
+  }
+
   const sendTextMessage = async (targetPeer: PeerInfo, text: string) => {
     if (!text.trim()) return
 
@@ -599,7 +629,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
 
   onUnmounted(() => {
     stopMetricsTracking()
-    resetActiveTask()
+    dismissTask()
   })
 
   return {
@@ -612,6 +642,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
     acceptTransfer,
     rejectTransfer,
     cancelActiveTask,
+    dismissTask,
     sendTextMessage,
   }
 }

@@ -30,7 +30,7 @@ function getDB() {
 
 export interface FileReceiverWriter {
   writeChunk(chunkIndex: number, data: ArrayBuffer): Promise<void>
-  finish(): Promise<void>
+  finish(): Promise<Blob | void>
   abort(): Promise<void>
 }
 
@@ -41,7 +41,7 @@ export async function createFileReceiver(
   file: FileMeta,
   transferId: string,
   fileIndex: number,
-  preferFSA: boolean = true
+  preferFSA: boolean = false
 ): Promise<FileReceiverWriter> {
   // Strategy 1: Native File System Access API
   if (preferFSA && typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
@@ -93,15 +93,23 @@ export async function createFileReceiver(
 
         const blobParts = records.map((r) => r.data)
         const blob = new Blob(blobParts, { type: file.type || 'application/octet-stream' })
-        triggerDownload(blob, file.name)
+        try {
+          triggerDownload(blob, file.name)
+        } catch (err) {
+          console.warn('Auto download failed:', err)
+        }
 
         // Cleanup
-        const delTx = db.transaction(STORE_NAME, 'readwrite')
-        const keys = records.map((r) => r.key)
-        for (const k of keys) {
-          await delTx.store.delete(k)
-        }
-        await delTx.done
+        try {
+          const delTx = db.transaction(STORE_NAME, 'readwrite')
+          const keys = records.map((r) => r.key)
+          for (const k of keys) {
+            await delTx.store.delete(k)
+          }
+          await delTx.done
+        } catch {}
+
+        return blob
       },
       async abort() {
         const tx = db.transaction(STORE_NAME, 'readwrite')
@@ -118,13 +126,18 @@ export async function createFileReceiver(
   // Strategy 3: Memory Blob Accumulator (< 200MB)
   const memoryChunks: ArrayBuffer[] = []
   return {
-    async writeChunk(_chunkIndex: number, data: ArrayBuffer) {
-      memoryChunks.push(data)
+    async writeChunk(chunkIndex: number, data: ArrayBuffer) {
+      memoryChunks[chunkIndex] = data
     },
     async finish() {
-      const blob = new Blob(memoryChunks, { type: file.type || 'application/octet-stream' })
-      triggerDownload(blob, file.name)
-      memoryChunks.length = 0
+      const validChunks = memoryChunks.filter(Boolean)
+      const blob = new Blob(validChunks, { type: file.type || 'application/octet-stream' })
+      try {
+        triggerDownload(blob, file.name)
+      } catch (err) {
+        console.warn('Auto download failed:', err)
+      }
+      return blob
     },
     async abort() {
       memoryChunks.length = 0
@@ -135,10 +148,15 @@ export async function createFileReceiver(
 export function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
+  a.style.display = 'none'
   a.href = url
   a.download = filename
   document.body.appendChild(a)
   a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 15000)
+  setTimeout(() => {
+    try {
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {}
+  }, 30000)
 }

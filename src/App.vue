@@ -31,7 +31,7 @@
     <DynamicIsland
       :task="activeTask"
       @cancel="cancelActiveTask"
-      @dismiss="activeTask = null"
+      @dismiss="dismissTask"
     />
 
     <!-- Incoming Transfer Authorization Modal -->
@@ -131,6 +131,7 @@ const {
   acceptTransfer,
   rejectTransfer,
   cancelActiveTask,
+  dismissTask,
   sendTextMessage,
 } = useTransfer(selfPeer, settings)
 

@@ -7,6 +7,7 @@ export interface FileMeta {
   totalChunks: number
   chunkSizeBytes: number
   lastModified?: number
+  blobUrl?: string
 }
 
 export type TransferStatus =
@@ -59,6 +60,7 @@ export type ControlType =
   | 'file-start'
   | 'file-end'
   | 'file-ack'
+  | 'all-completed'
   | 'cancel'
   | 'text'
 
