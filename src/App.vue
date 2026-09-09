@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+  <div class="h-[100dvh] min-h-[100dvh] flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300 overflow-hidden">
     <!-- Header Navigation -->
     <HeaderBar
       :room-id="currentRoomId"

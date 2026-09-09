@@ -23,6 +23,10 @@ export function usePeerManager(handlers: Partial<SupabaseSignalingHandlers> = {}
   const isDefaultRoom = ref<boolean>(true)
   const connectionStatus = ref<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('DISCONNECTED')
 
+  const isLanRoom = (roomId: string) => {
+    return roomId.startsWith('lan-') || roomId === 'lobby-global' || roomId.includes('正在')
+  }
+
   const parseRoomFromUrl = (): string | null => {
     const hash = window.location.hash
     const match = hash.match(/#\/room\/([a-zA-Z0-9_-]+)/)
@@ -36,9 +40,9 @@ export function usePeerManager(handlers: Partial<SupabaseSignalingHandlers> = {}
     const urlRoom = parseRoomFromUrl()
     if (urlRoom) {
       currentRoomId.value = urlRoom
-      isDefaultRoom.value = false
+      isDefaultRoom.value = isLanRoom(urlRoom)
     } else {
-      currentRoomId.value = '正在发现同公网设备...'
+      currentRoomId.value = '正在发现同频设备...'
       const ipRoom = await getPublicIpHash()
       currentRoomId.value = ipRoom
       isDefaultRoom.value = true
@@ -71,7 +75,7 @@ export function usePeerManager(handlers: Partial<SupabaseSignalingHandlers> = {}
     if (!trimmed || trimmed === currentRoomId.value) return
 
     currentRoomId.value = trimmed
-    isDefaultRoom.value = false
+    isDefaultRoom.value = isLanRoom(trimmed)
     window.location.hash = `#/room/${trimmed}`
     await joinCurrentRoom()
   }
@@ -94,7 +98,7 @@ export function usePeerManager(handlers: Partial<SupabaseSignalingHandlers> = {}
     const newRoom = parseRoomFromUrl()
     if (newRoom && newRoom !== currentRoomId.value) {
       currentRoomId.value = newRoom
-      isDefaultRoom.value = false
+      isDefaultRoom.value = isLanRoom(newRoom)
       joinCurrentRoom()
     }
   }

@@ -9,10 +9,10 @@
   >
     <div 
       v-if="task"
-      class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[92%] max-w-lg"
+      class="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[94%] max-w-md sm:max-w-lg"
     >
       <div 
-        class="rounded-3xl p-4 shadow-2xl border backdrop-blur-xl transition-all duration-300"
+        class="rounded-3xl p-3.5 sm:p-4 shadow-2xl border backdrop-blur-xl transition-all duration-300"
         :class="[
           task.status === 'completed' 
             ? 'bg-emerald-950/90 dark:bg-emerald-950/95 border-emerald-500/40 text-emerald-100'
