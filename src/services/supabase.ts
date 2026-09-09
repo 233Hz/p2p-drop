@@ -60,7 +60,13 @@ export class SupabaseSignalingService {
     }
 
     if (this.channel) {
-      await this.channel.unsubscribe()
+      if (this.client) {
+        try {
+          await this.client.removeChannel(this.channel)
+        } catch {}
+      } else {
+        await this.channel.unsubscribe()
+      }
       this.channel = null
     }
 
@@ -75,11 +81,11 @@ export class SupabaseSignalingService {
       },
     })
 
-    this.channel.on('presence', { event: 'sync' }, () => {
+    const syncPresence = () => {
       if (!this.channel) return
       const state = this.channel.presenceState()
       const peers: PeerInfo[] = []
-      
+
       for (const key in state) {
         const presences = state[key]
         if (presences && presences.length > 0) {
@@ -90,7 +96,12 @@ export class SupabaseSignalingService {
         }
       }
       handlers.onPresenceSync(peers)
-    })
+    }
+
+    this.channel
+      .on('presence', { event: 'sync' }, syncPresence)
+      .on('presence', { event: 'join' }, syncPresence)
+      .on('presence', { event: 'leave' }, syncPresence)
 
     this.channel.on('broadcast', { event: 'signal' }, ({ payload }) => {
       const signal = payload as SignalMessage
@@ -102,7 +113,11 @@ export class SupabaseSignalingService {
     this.channel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         handlers.onStatusChange('CONNECTED')
-        await this.channel?.track(selfPeer)
+        try {
+          await this.channel?.track(JSON.parse(JSON.stringify(selfPeer)))
+        } catch (err) {
+          console.error('Failed to track selfPeer:', err)
+        }
       } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
         handlers.onStatusChange('DISCONNECTED')
       } else if (status === 'TIMED_OUT') {
@@ -128,13 +143,19 @@ export class SupabaseSignalingService {
   public async updateSelfPeer(selfPeer: PeerInfo) {
     this.selfPeer = selfPeer
     if (this.channel) {
-      await this.channel.track(selfPeer)
+      await this.channel.track(JSON.parse(JSON.stringify(selfPeer)))
     }
   }
 
   public async leaveRoom() {
     if (this.channel) {
-      await this.channel.unsubscribe()
+      if (this.client) {
+        try {
+          await this.client.removeChannel(this.channel)
+        } catch {}
+      } else {
+        await this.channel.unsubscribe()
+      }
       this.channel = null
     }
     this.currentRoomId = null

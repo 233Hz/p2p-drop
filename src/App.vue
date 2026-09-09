@@ -20,6 +20,7 @@
         :self-peer="selfPeer"
         :peers="peers"
         :status="connectionStatus"
+        :room-id="currentRoomId"
         @send-files="handleSendFiles"
         @send-text="openTextModal"
         @edit-name="isNameOpen = true"
