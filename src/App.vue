@@ -1,5 +1,5 @@
 <template>
-  <div class="h-[100dvh] min-h-[100dvh] flex flex-col bg-[#1c1c1e] text-white/95 transition-colors duration-200 overflow-hidden">
+  <div class="h-[100dvh] min-h-[100dvh] flex flex-col bg-[#f5f5f7] text-[#1d1d1f] dark:bg-[#1c1c1e] dark:text-white/95 transition-colors duration-200 overflow-hidden">
     <!-- Header Navigation -->
     <HeaderBar
       :room-id="currentRoomId"
@@ -148,12 +148,7 @@ const openTextModal = (peer: PeerInfo | null) => {
 }
 
 const handleSendText = (text: string) => {
-  if (textTargetPeer.value) {
-    sendTextMessage(textTargetPeer.value, text)
-  } else if (peers.value.length > 0) {
-    // Send to first online peer or all
-    peers.value.forEach((p) => sendTextMessage(p, text))
-  }
+  sendTextMessage(textTargetPeer.value, text)
 }
 
 const handleSwitchRoom = (roomId: string) => {

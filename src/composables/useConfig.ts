@@ -49,6 +49,10 @@ export function useConfig() {
     } else {
       document.documentElement.classList.remove('dark')
     }
+    const meta = document.getElementById('theme-color-meta')
+    if (meta) {
+      meta.setAttribute('content', effectiveDark ? '#1c1c1e' : '#f5f5f7')
+    }
   }
 
   // Initialize theme

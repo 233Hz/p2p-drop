@@ -42,6 +42,12 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
   const incomingText = ref<TextItem | null>(null)
   const textMessages = ref<TextItem[]>([])
 
+  const appendTextMessage = (item: TextItem) => {
+    if (!item || !item.id) return
+    if (textMessages.value.some((m) => m.id === item.id)) return
+    textMessages.value.unshift(item)
+  }
+
   const webrtcService = new WebRTCService(settings)
   let activeRtc: WebRTCConnectionResult | null = null
   let activeChannel: TransferChannel | null = null
@@ -248,8 +254,9 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
 
       case 'text-message': {
         const item: TextItem = signal.payload
+        if (!item || item.fromPeerId === selfPeer.peerId) break
         incomingText.value = item
-        textMessages.value.unshift(item)
+        appendTextMessage(item)
         if (settings.soundEnabled) sound.playNotification()
         break
       }
@@ -324,8 +331,9 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
         if (settings.soundEnabled) sound.playError()
       },
       onTextReceived: (item) => {
+        if (!item || item.fromPeerId === selfPeer.peerId) return
         incomingText.value = item
-        textMessages.value.unshift(item)
+        appendTextMessage(item)
         if (settings.soundEnabled) sound.playNotification()
       },
     })
@@ -452,30 +460,30 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
     activeTask.value = null
   }
 
-  const sendTextMessage = async (targetPeer: PeerInfo, text: string) => {
+  const sendTextMessage = async (targetPeer: PeerInfo | null | undefined, text: string) => {
     if (!text.trim()) return
 
     const item: TextItem = {
-      id: 'msg_' + Date.now(),
+      id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
       fromPeerId: selfPeer.peerId,
       fromPeerName: selfPeer.name,
       text: text.trim(),
       timestamp: Date.now(),
     }
 
-    // Try through open control channel first, otherwise broadcast
-    if (activeChannel) {
+    // Try through open control channel first if target peer matches, otherwise send via Supabase
+    if (targetPeer && activeChannel) {
       activeChannel.sendText(item)
     } else {
       await supabaseService.sendSignal({
         from: selfPeer.peerId,
-        to: targetPeer.peerId,
+        to: targetPeer ? targetPeer.peerId : 'all',
         type: 'text-message',
         payload: item,
       })
     }
 
-    textMessages.value.unshift(item)
+    appendTextMessage(item)
   }
 
   onUnmounted(() => {

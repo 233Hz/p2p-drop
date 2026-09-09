@@ -60,7 +60,7 @@ export class SupabaseSignalingService {
     }
 
     if (this.channel) {
-      await this.channel.unsubscribe()
+      await this.client?.removeChannel(this.channel)
       this.channel = null
     }
 
@@ -79,12 +79,14 @@ export class SupabaseSignalingService {
       if (!this.channel) return
       const state = this.channel.presenceState()
       const peers: PeerInfo[] = []
+      const seen = new Set<string>()
       
       for (const key in state) {
         const presences = state[key]
         if (presences && presences.length > 0) {
           const p = presences[0] as unknown as PeerInfo
-          if (p.peerId !== selfPeer.peerId) {
+          if (p.peerId !== selfPeer.peerId && !seen.has(p.peerId)) {
+            seen.add(p.peerId)
             peers.push(p)
           }
         }
@@ -94,6 +96,7 @@ export class SupabaseSignalingService {
 
     this.channel.on('broadcast', { event: 'signal' }, ({ payload }) => {
       const signal = payload as SignalMessage
+      if (!signal || signal.from === selfPeer.peerId) return
       if (signal.to === selfPeer.peerId || signal.to === 'all') {
         handlers.onSignal(signal)
       }
@@ -134,7 +137,7 @@ export class SupabaseSignalingService {
 
   public async leaveRoom() {
     if (this.channel) {
-      await this.channel.unsubscribe()
+      await this.client?.removeChannel(this.channel)
       this.channel = null
     }
     this.currentRoomId = null

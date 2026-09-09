@@ -1,17 +1,17 @@
 <template>
   <div 
     v-if="isOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 backdrop-blur-md"
   >
-    <div class="w-full max-w-sm bg-[#2c2c2e] rounded-xl border border-white/10 p-5 sm:p-6 flex flex-col items-center shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
-      <div class="w-10 h-10 rounded-lg bg-[#3a3a3c] border border-white/8 text-white/90 flex items-center justify-center mb-3">
-        <Edit3 class="w-5 h-5 text-white/90" />
+    <div class="w-full max-w-sm bg-white dark:bg-[#2c2c2e] rounded-xl border border-black/8 dark:border-white/10 p-5 sm:p-6 flex flex-col items-center shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
+      <div class="w-10 h-10 rounded-lg bg-[#e5e5ea] dark:bg-[#3a3a3c] border border-black/8 dark:border-white/8 text-[#1d1d1f] dark:text-white/90 flex items-center justify-center mb-3">
+        <Edit3 class="w-5 h-5 text-[#1d1d1f] dark:text-white/90" />
       </div>
 
-      <h3 class="font-serif font-semibold text-white/95 text-base mb-1">
+      <h3 class="font-serif font-semibold text-[#1d1d1f] dark:text-white/95 text-base mb-1">
         修改本设备名称
       </h3>
-      <p class="text-xs text-white/40 font-sans mb-4 text-center">
+      <p class="text-xs text-[#1d1d1f]/40 dark:text-white/40 font-sans mb-4 text-center">
         名称将在局域网雷达中展示给其他设备
       </p>
 
@@ -22,13 +22,13 @@
             type="text"
             maxlength="20"
             placeholder="输入你的设备昵称"
-            class="flex-1 px-3.5 py-2 text-xs font-mono bg-[#1c1c1e] border border-white/10 rounded-lg text-white/90 placeholder-white/30 focus:outline-none focus:border-white/25 transition-colors duration-200"
+            class="flex-1 px-3.5 py-2 text-xs font-mono bg-[#f5f5f7] dark:bg-[#1c1c1e] border border-black/10 dark:border-white/10 rounded-lg text-[#1d1d1f] dark:text-white/90 placeholder-[#1d1d1f]/30 dark:placeholder-white/30 focus:outline-none focus:border-black/25 dark:focus:border-white/25 transition-colors duration-200"
             @keydown.enter="handleSave"
           />
           <button
             @click="randomizeName"
             type="button"
-            class="p-2 rounded-lg bg-[#3a3a3c] hover:bg-white/10 text-white/70 hover:text-white/90 border border-white/8 transition-colors duration-200 flex-shrink-0"
+            class="p-2 rounded-lg bg-[#e5e5ea] dark:bg-[#3a3a3c] hover:bg-black/10 dark:hover:bg-white/10 text-[#1d1d1f]/70 dark:text-white/70 hover:text-[#1d1d1f] dark:hover:text-white/90 border border-black/8 dark:border-white/8 transition-colors duration-200 flex-shrink-0"
             title="随机生成"
           >
             <Shuffle class="w-4 h-4" />
@@ -39,7 +39,7 @@
       <div class="w-full grid grid-cols-2 gap-2">
         <button
           @click="$emit('close')"
-          class="w-full py-2 rounded-lg bg-[#3a3a3c] hover:bg-white/10 text-white/70 hover:text-white/90 border border-white/8 text-xs font-medium transition-colors duration-200"
+          class="w-full py-2 rounded-lg bg-[#e5e5ea] dark:bg-[#3a3a3c] hover:bg-black/10 dark:hover:bg-white/10 text-[#1d1d1f]/70 dark:text-white/70 hover:text-[#1d1d1f] dark:hover:text-white/90 border border-black/8 dark:border-white/8 text-xs font-medium transition-colors duration-200"
         >
           取消
         </button>

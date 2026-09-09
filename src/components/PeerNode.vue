@@ -21,40 +21,40 @@
     <!-- Device Card Container -->
     <div 
       @click="handleClick"
-      class="relative p-3 rounded-xl bg-[#2c2c2e] border transition-colors duration-200 flex flex-col items-center min-w-[115px] sm:min-w-[135px]"
+      class="relative p-3 rounded-xl bg-white dark:bg-[#2c2c2e] border transition-colors duration-200 flex flex-col items-center min-w-[115px] sm:min-w-[135px] shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-none"
       :class="[
         isDragOver 
-          ? 'border-[#0a84ff] bg-[#3a3a3c]' 
+          ? 'border-[#0a84ff] bg-[#e5e5ea] dark:bg-[#3a3a3c]' 
           : isSelf 
-            ? 'border-white/12 bg-[#2c2c2e]' 
-            : 'border-white/10 group-hover:border-white/20 group-hover:bg-[#3a3a3c]/60'
+            ? 'border-black/10 dark:border-white/12 bg-white dark:bg-[#2c2c2e]' 
+            : 'border-black/8 dark:border-white/10 group-hover:border-black/20 dark:group-hover:border-white/20 group-hover:bg-black/[0.03] dark:group-hover:bg-[#3a3a3c]/60'
       ]"
     >
       <!-- Self Badge -->
       <div v-if="isSelf" class="absolute top-2 right-2">
-        <span class="px-1 py-0.5 rounded text-[10px] font-mono bg-white/10 text-white/80 border border-white/8">
+        <span class="px-1 py-0.5 rounded text-[10px] font-mono bg-black/5 dark:bg-white/10 text-[#1d1d1f]/80 dark:text-white/80 border border-black/8 dark:border-white/8">
           本机
         </span>
       </div>
 
       <!-- Device Icon Container -->
-      <div class="w-11 h-11 rounded-lg bg-[#3a3a3c] border border-white/8 flex items-center justify-center text-white/90 mb-2">
+      <div class="w-11 h-11 rounded-lg bg-[#e5e5ea] dark:bg-[#3a3a3c] border border-black/8 dark:border-white/8 flex items-center justify-center text-[#1d1d1f] dark:text-white/90 mb-2">
         <component 
           :is="deviceIcon" 
-          class="w-5 h-5 text-white/90" 
+          class="w-5 h-5 text-[#1d1d1f] dark:text-white/90" 
           stroke-width="1.8"
         />
       </div>
 
       <!-- Peer Name -->
       <div class="flex items-center space-x-1 max-w-[100px] sm:max-w-[120px] truncate">
-        <span class="font-serif font-semibold text-xs text-white/95 truncate">
+        <span class="font-serif font-semibold text-xs text-[#1d1d1f] dark:text-white/95 truncate">
           {{ peer.name }}
         </span>
         <button 
           v-if="isSelf" 
           @click.stop="$emit('edit-name')" 
-          class="text-white/40 hover:text-white/90 p-0.5 rounded transition-colors duration-200"
+          class="text-[#1d1d1f]/40 dark:text-white/40 hover:text-[#1d1d1f] dark:hover:text-white/90 p-0.5 rounded transition-colors duration-200"
           title="修改昵称"
         >
           <Edit2 class="w-3 h-3" />
@@ -62,18 +62,18 @@
       </div>
 
       <!-- OS & Browser Meta -->
-      <div class="text-[10px] font-mono text-white/40 mt-0.5 capitalize truncate max-w-[110px]">
+      <div class="text-[10px] font-mono text-[#1d1d1f]/40 dark:text-white/40 mt-0.5 capitalize truncate max-w-[110px]">
         {{ peer.os }} · {{ peer.browser }}
       </div>
 
       <!-- Quick Action Buttons for Remote Peer -->
       <div 
         v-if="!isSelf"
-        class="flex items-center space-x-1.5 mt-2 pt-2 border-t border-white/8 w-full justify-center"
+        class="flex items-center space-x-1.5 mt-2 pt-2 border-t border-black/8 dark:border-white/8 w-full justify-center"
       >
         <button
           @click.stop="triggerFilePicker"
-          class="px-2 py-1 rounded-lg bg-[#3a3a3c] hover:bg-white/10 text-white/80 hover:text-white/95 text-[11px] border border-white/8 transition-colors duration-200 flex items-center space-x-1"
+          class="px-2 py-1 rounded-lg bg-[#e5e5ea] dark:bg-[#3a3a3c] hover:bg-black/10 dark:hover:bg-white/10 text-[#1d1d1f]/80 dark:text-white/80 hover:text-[#1d1d1f] dark:hover:text-white/95 text-[11px] border border-black/8 dark:border-white/8 transition-colors duration-200 flex items-center space-x-1"
           title="发送文件"
         >
           <Upload class="w-3 h-3" />
@@ -81,7 +81,7 @@
         </button>
         <button
           @click.stop="$emit('send-text', peer)"
-          class="px-2 py-1 rounded-lg bg-[#3a3a3c] hover:bg-white/10 text-white/80 hover:text-white/95 text-[11px] border border-white/8 transition-colors duration-200 flex items-center space-x-1"
+          class="px-2 py-1 rounded-lg bg-[#e5e5ea] dark:bg-[#3a3a3c] hover:bg-black/10 dark:hover:bg-white/10 text-[#1d1d1f]/80 dark:text-white/80 hover:text-[#1d1d1f] dark:hover:text-white/95 text-[11px] border border-black/8 dark:border-white/8 transition-colors duration-200 flex items-center space-x-1"
           title="发送文字"
         >
           <MessageSquare class="w-3 h-3" />
