@@ -1,8 +1,34 @@
 class SoundManager {
   private ctx: AudioContext | null = null
 
+  constructor() {
+    if (typeof window !== 'undefined') {
+      const unlock = () => {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+          if (AudioCtx) {
+            this.ctx = new AudioCtx()
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume().catch(() => {})
+        }
+        window.removeEventListener('click', unlock)
+        window.removeEventListener('touchstart', unlock)
+        window.removeEventListener('keydown', unlock)
+      }
+      window.addEventListener('click', unlock, { passive: true, once: true })
+      window.addEventListener('touchstart', unlock, { passive: true, once: true })
+      window.addEventListener('keydown', unlock, { passive: true, once: true })
+    }
+  }
+
   private getContext(): AudioContext | null {
     if (typeof window === 'undefined') return null
+    // Avoid triggering browser warning if user hasn't interacted with document yet
+    if ((navigator as any).userActivation && !(navigator as any).userActivation.hasBeenActive) {
+      return null
+    }
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
       if (AudioCtx) {
@@ -104,7 +130,10 @@ class SoundManager {
   }
 
   vibrate(pattern: number[] = [80, 40, 80]) {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      if ((navigator as any).userActivation && !(navigator as any).userActivation.hasBeenActive) {
+        return
+      }
       try {
         navigator.vibrate(pattern)
       } catch {
