@@ -26,7 +26,9 @@ export const DEFAULT_FALLBACK_TURN_SERVERS: RTCIceServer[] = [
   {
     urls: [
       'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:80?transport=tcp',
       'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
       'turns:openrelay.metered.ca:443?transport=tcp',
     ],
     username: 'openrelay',

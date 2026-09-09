@@ -138,11 +138,9 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
 
         // Accepted: Initiate WebRTC connection as offerer
         activeTask.value.status = 'connecting'
-        const cachedCandidates = [...earlyIceCandidates]
-        earlyIceCandidates = []
 
         try {
-          activeRtc = await webrtcService.initiateConnection(
+          const session = webrtcService.initiateConnection(
             selfPeer.peerId,
             activeTask.value.peerId,
             (sig) => supabaseService.sendSignal(sig),
@@ -154,11 +152,16 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
                     'P2P 穿透失败（网络隔离或对称型 NAT，建议配置 TURN 中继）'
                 }
               }
-            },
-            cachedCandidates
+            }
           )
+          activeRtc = session
 
-          const channels = await activeRtc.getChannels()
+          // Flush any early arrival candidates
+          while (earlyIceCandidates.length > 0) {
+            session.addRemoteCandidate(earlyIceCandidates.shift()!)
+          }
+
+          const channels = await session.getChannels()
           setupTransferChannel(channels.control, channels.data)
 
           // Start sending files
@@ -182,11 +185,9 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
       case 'webrtc-offer': {
         if (!activeTask.value || activeTask.value.direction !== 'receive') return
         const offer = signal.payload
-        const cachedCandidates = [...earlyIceCandidates]
-        earlyIceCandidates = []
 
         try {
-          activeRtc = await webrtcService.acceptConnection(
+          const session = webrtcService.acceptConnection(
             selfPeer.peerId,
             signal.from,
             offer,
@@ -199,11 +200,16 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
                     'P2P 穿透失败（网络隔离或对称型 NAT，建议配置 TURN 中继）'
                 }
               }
-            },
-            cachedCandidates
+            }
           )
+          activeRtc = session
 
-          const channels = await activeRtc.getChannels()
+          // Flush any early arrival candidates
+          while (earlyIceCandidates.length > 0) {
+            session.addRemoteCandidate(earlyIceCandidates.shift()!)
+          }
+
+          const channels = await session.getChannels()
           setupTransferChannel(channels.control, channels.data)
           activeTask.value.status = 'transferring'
           startMetricsTracking()

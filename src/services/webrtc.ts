@@ -13,15 +13,7 @@ export interface WebRTCConnectionResult {
 export function buildRtcConfig(settings: Partial<AppSettings>): RTCConfiguration {
   const iceServers: RTCIceServer[] = []
 
-  // STUN servers
-  const stunUrls =
-    settings.stunServers && settings.stunServers.length > 0
-      ? settings.stunServers
-      : DEFAULT_STUN_SERVERS
-
-  iceServers.push({ urls: stunUrls })
-
-  // Custom TURN server or fallback
+  // 1. Custom TURN server if configured
   if (settings.turnServer && settings.turnServer.urls.trim()) {
     const turnEntry: RTCIceServer = {
       urls: settings.turnServer.urls.trim(),
@@ -33,44 +25,68 @@ export function buildRtcConfig(settings: Partial<AppSettings>): RTCConfiguration
       turnEntry.credential = settings.turnServer.credential
     }
     iceServers.push(turnEntry)
-  } else {
-    // Inject default fallback TURN servers for symmetric NAT / mobile networks
-    iceServers.push(...DEFAULT_FALLBACK_TURN_SERVERS)
   }
+
+  // 2. STUN servers
+  const stunUrls =
+    settings.stunServers && settings.stunServers.length > 0
+      ? settings.stunServers
+      : DEFAULT_STUN_SERVERS
+
+  iceServers.push({ urls: stunUrls })
+
+  // 3. Fallback TURN servers (both UDP and TCP)
+  iceServers.push(...DEFAULT_FALLBACK_TURN_SERVERS)
 
   return {
     iceServers,
-    iceCandidatePoolSize: 2,
+    bundlePolicy: 'max-bundle',
+    iceCandidatePoolSize: 0,
   }
 }
 
-class WebRTCConnectionSession implements WebRTCConnectionResult {
+export class WebRTCConnectionSession implements WebRTCConnectionResult {
   public pc: RTCPeerConnection
   private pendingCandidates: RTCIceCandidateInit[] = []
   private hasRemoteDesc = false
-  public getChannels: () => Promise<{ control: RTCDataChannel; data: RTCDataChannel }>
-  public close: () => void
+  private controlDc: RTCDataChannel | null = null
+  private dataDc: RTCDataChannel | null = null
+  private channelsPromise: Promise<{ control: RTCDataChannel; data: RTCDataChannel }>
+  private resolveChannels!: (val: { control: RTCDataChannel; data: RTCDataChannel }) => void
+  private rejectChannels!: (err: Error) => void
+  private isFinished = false
+  private timeoutTimer: any = null
 
-  constructor(
-    pc: RTCPeerConnection,
-    getChannels: () => Promise<{ control: RTCDataChannel; data: RTCDataChannel }>,
-    closeFn: () => void
-  ) {
-    this.pc = pc
-    this.getChannels = getChannels
-    this.close = closeFn
+  constructor(config: RTCConfiguration) {
+    this.pc = new RTCPeerConnection(config)
+
+    this.channelsPromise = new Promise((resolve, reject) => {
+      this.resolveChannels = resolve
+      this.rejectChannels = reject
+    })
+
+    this.timeoutTimer = setTimeout(() => {
+      this.fail(new Error('等待数据通道连接超时（双方可能处于不同网络或被防火墙拦截）'))
+    }, 35000)
+  }
+
+  public getChannels = (): Promise<{ control: RTCDataChannel; data: RTCDataChannel }> => {
+    return this.channelsPromise
   }
 
   public async setRemoteDescription(desc: RTCSessionDescriptionInit): Promise<void> {
-    await this.pc.setRemoteDescription(new RTCSessionDescription(desc))
-    this.hasRemoteDesc = true
-    await this.flushPendingCandidates()
+    try {
+      await this.pc.setRemoteDescription(new RTCSessionDescription(desc))
+      this.hasRemoteDesc = true
+      await this.flushPendingCandidates()
+    } catch (err: any) {
+      console.error('Failed to set remote description:', err)
+      this.fail(err)
+    }
   }
 
   public async addRemoteCandidate(candidate: RTCIceCandidateInit): Promise<void> {
-    if (!candidate || !candidate.candidate) {
-      return
-    }
+    if (!candidate || !candidate.candidate) return
 
     if (!this.hasRemoteDesc || !this.pc.remoteDescription) {
       this.pendingCandidates.push(candidate)
@@ -80,7 +96,7 @@ class WebRTCConnectionSession implements WebRTCConnectionResult {
     try {
       await this.pc.addIceCandidate(new RTCIceCandidate(candidate))
     } catch (err) {
-      console.warn('Failed to add remote ICE candidate directly:', err)
+      console.warn('Failed to add remote candidate:', err)
     }
   }
 
@@ -93,9 +109,98 @@ class WebRTCConnectionSession implements WebRTCConnectionResult {
       try {
         await this.pc.addIceCandidate(new RTCIceCandidate(cand))
       } catch (err) {
-        console.warn('Failed to add queued remote ICE candidate:', err)
+        console.warn('Failed to add queued candidate:', err)
       }
     }
+  }
+
+  public setupLocalChannels(
+    controlDc: RTCDataChannel,
+    dataDc: RTCDataChannel,
+    onStateChange?: (state: RTCPeerConnectionState) => void
+  ) {
+    this.controlDc = controlDc
+    this.dataDc = dataDc
+
+    this.bindMonitoring(onStateChange)
+
+    const checkOpen = () => {
+      if (this.isFinished) return
+      if (controlDc.readyState === 'open' && dataDc.readyState === 'open') {
+        this.isFinished = true
+        if (this.timeoutTimer) clearTimeout(this.timeoutTimer)
+        this.resolveChannels({ control: controlDc, data: dataDc })
+      }
+    }
+
+    controlDc.onopen = checkOpen
+    dataDc.onopen = checkOpen
+    checkOpen()
+  }
+
+  public setupRemoteChannels(onStateChange?: (state: RTCPeerConnectionState) => void) {
+    this.bindMonitoring(onStateChange)
+
+    const checkOpen = () => {
+      if (this.isFinished) return
+      if (
+        this.controlDc &&
+        this.dataDc &&
+        this.controlDc.readyState === 'open' &&
+        this.dataDc.readyState === 'open'
+      ) {
+        this.isFinished = true
+        if (this.timeoutTimer) clearTimeout(this.timeoutTimer)
+        this.resolveChannels({ control: this.controlDc, data: this.dataDc })
+      }
+    }
+
+    this.pc.ondatachannel = (event) => {
+      if (event.channel.label === 'control') {
+        this.controlDc = event.channel
+        this.controlDc.onopen = checkOpen
+      } else if (event.channel.label === 'data') {
+        this.dataDc = event.channel
+        this.dataDc.onopen = checkOpen
+      }
+      checkOpen()
+    }
+  }
+
+  private bindMonitoring(onStateChange?: (state: RTCPeerConnectionState) => void) {
+    this.pc.onconnectionstatechange = () => {
+      onStateChange?.(this.pc.connectionState)
+      if (this.pc.connectionState === 'failed') {
+        this.fail(new Error('WebRTC 连接失败（对称型 NAT 或防火墙限制）'))
+      }
+    }
+
+    this.pc.oniceconnectionstatechange = () => {
+      if (this.pc.iceConnectionState === 'failed') {
+        this.fail(new Error('WebRTC ICE 穿透失败（所有网络候选对均无法连通）'))
+      }
+    }
+  }
+
+  public fail(err: Error) {
+    if (this.isFinished) return
+    this.isFinished = true
+    if (this.timeoutTimer) clearTimeout(this.timeoutTimer)
+    this.rejectChannels(err)
+  }
+
+  public close = () => {
+    if (this.timeoutTimer) clearTimeout(this.timeoutTimer)
+    this.isFinished = true
+    try {
+      this.controlDc?.close()
+    } catch {}
+    try {
+      this.dataDc?.close()
+    } catch {}
+    try {
+      this.pc.close()
+    } catch {}
   }
 }
 
@@ -110,19 +215,19 @@ export class WebRTCService {
     this.config = buildRtcConfig(settings)
   }
 
-  public async initiateConnection(
+  public initiateConnection(
     selfPeerId: string,
     targetPeerId: string,
     sendSignal: (signal: SignalMessage) => void,
-    onStateChange?: (state: RTCPeerConnectionState) => void,
-    initialCandidates: RTCIceCandidateInit[] = []
-  ): Promise<WebRTCConnectionResult> {
-    const pc = new RTCPeerConnection(this.config)
+    onStateChange?: (state: RTCPeerConnectionState) => void
+  ): WebRTCConnectionSession {
+    const session = new WebRTCConnectionSession(this.config)
+    const pc = session.pc
 
     const controlDc = pc.createDataChannel('control', { ordered: true })
     const dataDc = pc.createDataChannel('data', { ordered: true })
 
-    this.bindConnectionMonitoring(pc, onStateChange)
+    session.setupLocalChannels(controlDc, dataDc, onStateChange)
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -135,93 +240,33 @@ export class WebRTCService {
       }
     }
 
-    const offer = await pc.createOffer()
-    await pc.setLocalDescription(offer)
-
-    sendSignal({
-      from: selfPeerId,
-      to: targetPeerId,
-      type: 'webrtc-offer',
-      payload: offer,
-    })
-
-    const getChannels = (): Promise<{ control: RTCDataChannel; data: RTCDataChannel }> => {
-      return new Promise((resolve, reject) => {
-        let isResolved = false
-
-        const checkOpen = () => {
-          if (isResolved) return
-          if (controlDc.readyState === 'open' && dataDc.readyState === 'open') {
-            isResolved = true
-            clearTimeout(timer)
-            resolve({ control: controlDc, data: dataDc })
-          }
-        }
-
-        controlDc.onopen = checkOpen
-        dataDc.onopen = checkOpen
-        checkOpen()
-
-        const timer = setTimeout(() => {
-          if (!isResolved) {
-            isResolved = true
-            reject(new Error('数据通道连接超时（对端未就绪或被拦截）'))
-          }
-        }, 30000)
-
-        const handleFail = (msg: string) => {
-          if (!isResolved) {
-            isResolved = true
-            clearTimeout(timer)
-            reject(new Error(msg))
-          }
-        }
-
-        pc.onconnectionstatechange = () => {
-          if (pc.connectionState === 'failed') {
-            handleFail('WebRTC 连接失败（对称型 NAT 或防火墙限制）')
-          }
-        }
-
-        pc.oniceconnectionstatechange = () => {
-          if (pc.iceConnectionState === 'failed') {
-            handleFail('WebRTC ICE 穿透失败（无法建立直连或中继）')
-          }
-        }
+    // Create and send offer
+    pc.createOffer()
+      .then(async (offer) => {
+        await pc.setLocalDescription(offer)
+        sendSignal({
+          from: selfPeerId,
+          to: targetPeerId,
+          type: 'webrtc-offer',
+          payload: offer,
+        })
       })
-    }
-
-    const session = new WebRTCConnectionSession(
-      pc,
-      getChannels,
-      () => {
-        controlDc.close()
-        dataDc.close()
-        pc.close()
-      }
-    )
-
-    // Add any early arrival candidates
-    for (const cand of initialCandidates) {
-      await session.addRemoteCandidate(cand)
-    }
+      .catch((err) => session.fail(err))
 
     return session
   }
 
-  public async acceptConnection(
+  public acceptConnection(
     selfPeerId: string,
     fromPeerId: string,
     offer: RTCSessionDescriptionInit,
     sendSignal: (signal: SignalMessage) => void,
-    onStateChange?: (state: RTCPeerConnectionState) => void,
-    initialCandidates: RTCIceCandidateInit[] = []
-  ): Promise<WebRTCConnectionResult> {
-    const pc = new RTCPeerConnection(this.config)
-    let controlDc: RTCDataChannel | null = null
-    let dataDc: RTCDataChannel | null = null
+    onStateChange?: (state: RTCPeerConnectionState) => void
+  ): WebRTCConnectionSession {
+    const session = new WebRTCConnectionSession(this.config)
+    const pc = session.pc
 
-    this.bindConnectionMonitoring(pc, onStateChange)
+    session.setupRemoteChannels(onStateChange)
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -234,102 +279,22 @@ export class WebRTCService {
       }
     }
 
-    const channelsPromise = new Promise<{ control: RTCDataChannel; data: RTCDataChannel }>(
-      (resolve, reject) => {
-        let isResolved = false
-
-        const timeout = setTimeout(() => {
-          if (!isResolved) {
-            isResolved = true
-            reject(new Error('等待远端数据通道超时（网络受限或防火墙阻隔）'))
-          }
-        }, 30000)
-
-        const checkOpen = () => {
-          if (isResolved) return
-          if (
-            controlDc &&
-            dataDc &&
-            controlDc.readyState === 'open' &&
-            dataDc.readyState === 'open'
-          ) {
-            isResolved = true
-            clearTimeout(timeout)
-            resolve({ control: controlDc, data: dataDc })
-          }
-        }
-
-        pc.ondatachannel = (event) => {
-          if (event.channel.label === 'control') {
-            controlDc = event.channel
-            controlDc.onopen = checkOpen
-          } else if (event.channel.label === 'data') {
-            dataDc = event.channel
-            dataDc.onopen = checkOpen
-          }
-          checkOpen()
-        }
-
-        const handleFail = (msg: string) => {
-          if (!isResolved) {
-            isResolved = true
-            clearTimeout(timeout)
-            reject(new Error(msg))
-          }
-        }
-
-        pc.onconnectionstatechange = () => {
-          if (pc.connectionState === 'failed') {
-            handleFail('WebRTC 连接失败（对称型 NAT 或防火墙限制）')
-          }
-        }
-
-        pc.oniceconnectionstatechange = () => {
-          if (pc.iceConnectionState === 'failed') {
-            handleFail('WebRTC ICE 穿透失败（无法建立直连或中继）')
-          }
-        }
-      }
-    )
-
-    const session = new WebRTCConnectionSession(
-      pc,
-      () => channelsPromise,
-      () => {
-        controlDc?.close()
-        dataDc?.close()
-        pc.close()
-      }
-    )
-
-    // Pre-queue early candidates before setRemoteDescription
-    for (const cand of initialCandidates) {
-      await session.addRemoteCandidate(cand)
-    }
-
-    // Set remote offer and auto-flush queued candidates
-    await session.setRemoteDescription(offer)
-
-    const answer = await pc.createAnswer()
-    await pc.setLocalDescription(answer)
-
-    sendSignal({
-      from: selfPeerId,
-      to: fromPeerId,
-      type: 'webrtc-answer',
-      payload: answer,
-    })
+    // Set remote offer then create answer
+    session
+      .setRemoteDescription(offer)
+      .then(async () => {
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        sendSignal({
+          from: selfPeerId,
+          to: fromPeerId,
+          type: 'webrtc-answer',
+          payload: answer,
+        })
+      })
+      .catch((err) => session.fail(err))
 
     return session
-  }
-
-  private bindConnectionMonitoring(
-    pc: RTCPeerConnection,
-    onStateChange?: (state: RTCPeerConnectionState) => void
-  ) {
-    pc.onconnectionstatechange = () => {
-      onStateChange?.(pc.connectionState)
-    }
   }
 }
 
