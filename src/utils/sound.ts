@@ -25,20 +25,28 @@ class SoundManager {
 
   private getContext(): AudioContext | null {
     if (typeof window === 'undefined') return null
-    // Avoid triggering browser warning if user hasn't interacted with document yet
-    if ((navigator as any).userActivation && !(navigator as any).userActivation.hasBeenActive) {
+    try {
+      // If user hasn't interacted with page, do not initialize AudioContext to avoid browser warning
+      if ((navigator as any).userActivation && !(navigator as any).userActivation.hasBeenActive) {
+        return null
+      }
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+        if (AudioCtx) {
+          this.ctx = new AudioCtx()
+        }
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        if ((navigator as any).userActivation?.hasBeenActive) {
+          this.ctx.resume().catch(() => {})
+        } else {
+          return null
+        }
+      }
+      return this.ctx && this.ctx.state === 'running' ? this.ctx : null
+    } catch {
       return null
     }
-    if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
-      if (AudioCtx) {
-        this.ctx = new AudioCtx()
-      }
-    }
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume().catch(() => {})
-    }
-    return this.ctx
   }
 
   playSuccess() {
