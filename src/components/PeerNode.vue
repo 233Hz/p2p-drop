@@ -1,8 +1,8 @@
 <template>
   <div 
-    class="flex flex-col items-center justify-center select-none transition-colors duration-200"
+    class="flex flex-col items-center justify-center select-none transition-transform duration-200"
     :class="[
-      isSelf ? 'z-10' : 'group cursor-pointer'
+      isSelf ? 'z-10' : 'group cursor-pointer hover:scale-105 active:scale-95'
     ]"
     @dragover.prevent="onDragOver"
     @dragleave.prevent="onDragLeave"
@@ -18,74 +18,86 @@
       @change="onFileSelected"
     />
 
-    <!-- Device Card Container -->
-    <div 
-      @click="handleClick"
-      class="relative p-3 rounded-xl bg-white dark:bg-[#2c2c2e] border transition-colors duration-200 flex flex-col items-center min-w-[115px] sm:min-w-[135px] shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-none"
-      :class="[
-        isDragOver 
-          ? 'border-[#0a84ff] bg-[#e5e5ea] dark:bg-[#3a3a3c]' 
-          : isSelf 
-            ? 'border-black/10 dark:border-white/12 bg-white dark:bg-[#2c2c2e]' 
-            : 'border-black/8 dark:border-white/10 group-hover:border-black/20 dark:group-hover:border-white/20 group-hover:bg-black/[0.03] dark:group-hover:bg-[#3a3a3c]/60'
-      ]"
-    >
-      <!-- Self Badge -->
-      <div v-if="isSelf" class="absolute top-2 right-2">
-        <span class="px-1 py-0.5 rounded text-[10px] font-mono bg-black/5 dark:bg-white/10 text-[#1d1d1f]/80 dark:text-white/80 border border-black/8 dark:border-white/8">
+    <!-- Avatar Circle Container -->
+    <div class="relative flex items-center justify-center">
+      <!-- Drag Over Glow Ring -->
+      <div 
+        v-if="isDragOver"
+        class="absolute -inset-2.5 rounded-full bg-[#0a84ff]/30 ring-2 ring-[#0a84ff] transition-all"
+      ></div>
+
+      <!-- Circle Node -->
+      <div 
+        @click="handleClick"
+        class="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center shadow-md transition-all duration-200 border-2"
+        :class="[
+          peer.avatarColor ? `bg-gradient-to-tr ${peer.avatarColor}` : 'bg-gradient-to-tr from-blue-500 to-indigo-600',
+          isDragOver 
+            ? 'border-[#0a84ff] scale-105 shadow-lg shadow-[#0a84ff]/30' 
+            : isSelf 
+              ? 'border-white dark:border-white/20 shadow-sm' 
+              : 'border-white/90 dark:border-white/10 shadow-md group-hover:shadow-lg'
+        ]"
+      >
+        <!-- Device Icon -->
+        <component 
+          :is="deviceIcon" 
+          class="w-7 h-7 sm:w-9 sm:h-9 text-white drop-shadow-sm" 
+          stroke-width="1.8"
+        />
+
+        <!-- Self Badge -->
+        <span 
+          v-if="isSelf" 
+          class="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#0a84ff] text-white shadow-sm ring-2 ring-white dark:ring-[#1c1c1e]"
+        >
           本机
         </span>
       </div>
+    </div>
 
-      <!-- Device Icon Container -->
-      <div class="w-11 h-11 rounded-lg bg-[#e5e5ea] dark:bg-[#3a3a3c] border border-black/8 dark:border-white/8 flex items-center justify-center text-[#1d1d1f] dark:text-white/90 mb-2">
-        <component 
-          :is="deviceIcon" 
-          class="w-5 h-5 text-[#1d1d1f] dark:text-white/90" 
-          stroke-width="1.8"
-        />
-      </div>
-
-      <!-- Peer Name -->
-      <div class="flex items-center space-x-1 max-w-[100px] sm:max-w-[120px] truncate">
-        <span class="font-serif font-semibold text-xs text-[#1d1d1f] dark:text-white/95 truncate">
+    <!-- Peer Name & Meta -->
+    <div class="mt-2 text-center max-w-[120px] sm:max-w-[150px]">
+      <div class="flex items-center justify-center space-x-1">
+        <span class="font-serif font-semibold text-xs sm:text-sm text-[#1d1d1f] dark:text-white/95 truncate">
           {{ peer.name }}
         </span>
         <button 
           v-if="isSelf" 
           @click.stop="$emit('edit-name')" 
-          class="text-[#1d1d1f]/40 dark:text-white/40 hover:text-[#1d1d1f] dark:hover:text-white/90 p-0.5 rounded transition-colors duration-200"
+          class="text-[#1d1d1f]/40 dark:text-white/40 hover:text-[#0a84ff] p-0.5 rounded transition-colors duration-200"
           title="修改昵称"
         >
           <Edit2 class="w-3 h-3" />
         </button>
       </div>
 
-      <!-- OS & Browser Meta -->
-      <div class="text-[10px] font-mono text-[#1d1d1f]/40 dark:text-white/40 mt-0.5 capitalize truncate max-w-[110px]">
-        {{ peer.os }} · {{ peer.browser }}
+      <div class="flex items-center justify-center space-x-1 mt-0.5 text-[10px] font-mono text-[#1d1d1f]/50 dark:text-white/40 capitalize">
+        <span>{{ peer.os }}</span>
+        <span>·</span>
+        <span>{{ peer.browser }}</span>
       </div>
 
       <!-- Quick Action Buttons for Remote Peer -->
       <div 
         v-if="!isSelf"
-        class="flex items-center space-x-1.5 mt-2 pt-2 border-t border-black/8 dark:border-white/8 w-full justify-center"
+        class="flex items-center space-x-1 mt-1.5 justify-center"
       >
         <button
           @click.stop="triggerFilePicker"
-          class="px-2 py-1 rounded-lg bg-[#e5e5ea] dark:bg-[#3a3a3c] hover:bg-black/10 dark:hover:bg-white/10 text-[#1d1d1f]/80 dark:text-white/80 hover:text-[#1d1d1f] dark:hover:text-white/95 text-[11px] border border-black/8 dark:border-white/8 transition-colors duration-200 flex items-center space-x-1"
+          class="px-2 py-0.5 rounded-full bg-[#e5e5ea] dark:bg-[#3a3a3c] hover:bg-black/10 dark:hover:bg-white/10 text-[#1d1d1f]/80 dark:text-white/90 text-[11px] font-medium border border-black/8 dark:border-white/8 transition-colors duration-200 flex items-center space-x-1 shadow-sm"
           title="发送文件"
         >
-          <Upload class="w-3 h-3" />
-          <span class="hidden sm:inline">文件</span>
+          <Upload class="w-2.5 h-2.5" />
+          <span>发文件</span>
         </button>
         <button
           @click.stop="$emit('send-text', peer)"
-          class="px-2 py-1 rounded-lg bg-[#e5e5ea] dark:bg-[#3a3a3c] hover:bg-black/10 dark:hover:bg-white/10 text-[#1d1d1f]/80 dark:text-white/80 hover:text-[#1d1d1f] dark:hover:text-white/95 text-[11px] border border-black/8 dark:border-white/8 transition-colors duration-200 flex items-center space-x-1"
+          class="px-2 py-0.5 rounded-full bg-[#e5e5ea] dark:bg-[#3a3a3c] hover:bg-black/10 dark:hover:bg-white/10 text-[#1d1d1f]/80 dark:text-white/90 text-[11px] font-medium border border-black/8 dark:border-white/8 transition-colors duration-200 flex items-center space-x-1 shadow-sm"
           title="发送文字"
         >
-          <MessageSquare class="w-3 h-3" />
-          <span class="hidden sm:inline">文本</span>
+          <MessageSquare class="w-2.5 h-2.5" />
+          <span>发消息</span>
         </button>
       </div>
     </div>

@@ -13,7 +13,14 @@ const NOUNS = [
 ]
 
 const AVATAR_COLORS = [
-  'bg-[#3a3a3c]',
+  'from-blue-500 to-indigo-600',
+  'from-sky-500 to-blue-600',
+  'from-emerald-500 to-teal-600',
+  'from-violet-500 to-purple-600',
+  'from-amber-500 to-orange-600',
+  'from-rose-500 to-pink-600',
+  'from-teal-500 to-cyan-600',
+  'from-indigo-500 to-fuchsia-600',
 ]
 
 export function generateRandomName(): string {
