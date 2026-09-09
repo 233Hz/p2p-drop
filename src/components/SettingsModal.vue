@@ -33,11 +33,11 @@
         <div>
           <div class="flex items-center justify-between mb-1.5">
             <label class="text-xs font-bold text-slate-900 dark:text-slate-100">
-              WebRTC NAT 穿透与中继 (STUN / TURN)
+              内网传输与中继设置
             </label>
           </div>
           <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2.5">
-            默认已内置腾讯云、小米、B站、Cloudflare 等高可用 STUN 穿透节点与公共 TURN 回退中继。如处在强对称型 NAT 或企业隔离网络，可在此配置专属 TURN 中继服务器。
+            默认已开启局域网内网直连传输模式，文件数据仅在同一 Wi-Fi / 局域网内的两台设备之间直接传输，不经过任何外部服务器，保护隐私且高速。如确实需要跨外网中继，可在此配置专属私有 TURN 服务器。
           </p>
 
           <div class="space-y-2">

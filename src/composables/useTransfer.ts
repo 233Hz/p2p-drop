@@ -15,24 +15,26 @@ export interface IncomingRequest {
 }
 
 function formatErrorMessage(err: any): string {
-  if (!err) return '传输连接异常中断'
+  if (!err) return '内网传输连接中断'
   const msg = typeof err === 'string' ? err : err.message || String(err)
   if (msg.includes('timed out') || msg.includes('timeout') || msg.includes('超时')) {
-    return 'P2P 穿透握手超时（双方可能处于不同网络、受防火墙阻隔或运营商拦截，建议检查网络或配置 TURN 中继）'
+    return '内网连接超时：请确认两台设备处于同一 Wi-Fi 或局域网内，且路由器未开启 AP 隔离或访客模式。若设备开启了代理或 VPN，请尝试临时关闭。'
   }
   if (
     msg.includes('Symmetric NAT') ||
     msg.includes('firewall') ||
     msg.includes('WebRTC connection failed') ||
-    msg.includes('打洞失败')
+    msg.includes('直连建立失败') ||
+    msg.includes('穿透失败')
   ) {
-    return 'P2P 打洞失败（网络限制或对称型 NAT，建议配置 TURN 中继服务器）'
+    return '局域网直连失败：两台设备未能在本地网络建立连通。请确保连接同一 Wi-Fi，且未开启 AP 隔离或 VPN 代理拦截。'
   }
   if (msg.includes('closed unexpectedly') || msg.includes('closed')) {
-    return '传输通道被意外中断'
+    return '内网传输通道被意外中断'
   }
   return msg
 }
+
 
 export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
   const activeTask = ref<TransferTask | null>(null)
@@ -149,7 +151,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
                 if (activeTask.value) {
                   activeTask.value.status = 'failed'
                   activeTask.value.errorMessage =
-                    'P2P 穿透失败（网络隔离或对称型 NAT，建议配置 TURN 中继）'
+                    '局域网直连失败：请检查两端是否连接同一 Wi-Fi，且路由器未开启 AP 隔离'
                 }
               }
             }
@@ -197,7 +199,7 @@ export function useTransfer(selfPeer: PeerInfo, settings: AppSettings) {
                 if (activeTask.value) {
                   activeTask.value.status = 'failed'
                   activeTask.value.errorMessage =
-                    'P2P 穿透失败（网络隔离或对称型 NAT，建议配置 TURN 中继）'
+                    '局域网直连失败：请检查两端是否连接同一 Wi-Fi，且路由器未开启 AP 隔离'
                 }
               }
             }

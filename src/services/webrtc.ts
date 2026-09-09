@@ -1,6 +1,6 @@
 import type { SignalMessage } from '@/types/transfer'
 import type { AppSettings } from '@/types/config'
-import { DEFAULT_STUN_SERVERS, DEFAULT_FALLBACK_TURN_SERVERS } from '@/types/config'
+import { DEFAULT_STUN_SERVERS } from '@/types/config'
 
 export interface WebRTCConnectionResult {
   pc: RTCPeerConnection
@@ -13,7 +13,7 @@ export interface WebRTCConnectionResult {
 export function buildRtcConfig(settings: Partial<AppSettings>): RTCConfiguration {
   const iceServers: RTCIceServer[] = []
 
-  // 1. Custom TURN server if configured
+  // 1. Custom TURN server only if explicitly configured by user
   if (settings.turnServer && settings.turnServer.urls.trim()) {
     const turnEntry: RTCIceServer = {
       urls: settings.turnServer.urls.trim(),
@@ -27,16 +27,13 @@ export function buildRtcConfig(settings: Partial<AppSettings>): RTCConfiguration
     iceServers.push(turnEntry)
   }
 
-  // 2. STUN servers
+  // 2. Local STUN servers for router port discovery
   const stunUrls =
     settings.stunServers && settings.stunServers.length > 0
       ? settings.stunServers
       : DEFAULT_STUN_SERVERS
 
   iceServers.push({ urls: stunUrls })
-
-  // 3. Fallback TURN servers (both UDP and TCP)
-  iceServers.push(...DEFAULT_FALLBACK_TURN_SERVERS)
 
   return {
     iceServers,
@@ -66,7 +63,7 @@ export class WebRTCConnectionSession implements WebRTCConnectionResult {
     })
 
     this.timeoutTimer = setTimeout(() => {
-      this.fail(new Error('等待数据通道连接超时（双方可能处于不同网络或被防火墙拦截）'))
+      this.fail(new Error('等待内网数据通道连接超时（请确保两端处于同一 Wi-Fi，且未开启 AP 隔离或 VPN 代理）'))
     }, 35000)
   }
 
@@ -171,13 +168,13 @@ export class WebRTCConnectionSession implements WebRTCConnectionResult {
     this.pc.onconnectionstatechange = () => {
       onStateChange?.(this.pc.connectionState)
       if (this.pc.connectionState === 'failed') {
-        this.fail(new Error('WebRTC 连接失败（对称型 NAT 或防火墙限制）'))
+        this.fail(new Error('局域网直连建立失败（两台设备未在同一 Wi-Fi 或受路由器 AP 隔离限制）'))
       }
     }
 
     this.pc.oniceconnectionstatechange = () => {
       if (this.pc.iceConnectionState === 'failed') {
-        this.fail(new Error('WebRTC ICE 穿透失败（所有网络候选对均无法连通）'))
+        this.fail(new Error('局域网 ICE 穿透失败（无法建立本地点对点直连）'))
       }
     }
   }

@@ -2,44 +2,34 @@
  * Get public IP hash or fallback channel name
  */
 export async function getPublicIpHash(): Promise<string> {
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 3500)
+  const apis = [
+    { url: 'https://api.ip.sb/jsonip', key: 'ip' },
+    { url: 'https://myip.ipip.net/json', key: 'data.ip' },
+    { url: 'https://api.ipify.org?format=json', key: 'ip' },
+  ]
 
-    const response = await fetch('https://api.ipify.org?format=json', {
-      signal: controller.signal
-    }).catch(() => null)
+  for (const api of apis) {
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 2500)
+      const res = await fetch(api.url, { signal: controller.signal }).catch(() => null)
+      clearTimeout(timeoutId)
 
-    clearTimeout(timeoutId)
-
-    if (response && response.ok) {
-      const data = await response.json()
-      if (data.ip) {
-        return await hashString(data.ip)
+      if (res && res.ok) {
+        const json = await res.json()
+        const ip = api.key === 'data.ip' ? json?.data?.ip : json?.ip
+        if (ip && typeof ip === 'string' && ip.trim()) {
+          return await hashString(ip.trim())
+        }
       }
+    } catch {
+      // next api
     }
-  } catch {
-    // ignore
-  }
-
-  // Secondary fallback
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 3500)
-    const res = await fetch('https://api.infoip.io/', { signal: controller.signal }).catch(() => null)
-    clearTimeout(timeoutId)
-    if (res && res.ok) {
-      const data = await res.json()
-      if (data.ip) {
-        return await hashString(data.ip)
-      }
-    }
-  } catch {
-    // ignore
   }
 
   return 'lobby-global'
 }
+
 
 async function hashString(str: string): Promise<string> {
   const encoder = new TextEncoder()

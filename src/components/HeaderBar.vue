@@ -12,7 +12,7 @@
         <h1 class="text-sm sm:text-base md:text-lg font-bold tracking-tight bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-700 dark:from-white dark:via-indigo-200 dark:to-slate-300 bg-clip-text text-transparent">
           P2P Drop
         </h1>
-        <p class="text-[10px] text-slate-500 dark:text-slate-400 hidden md:block">免安装 · 跨设备直连快传</p>
+        <p class="text-[10px] text-slate-500 dark:text-slate-400 hidden md:block">免安装 · 局域网直连快传</p>
       </div>
     </div>
 
